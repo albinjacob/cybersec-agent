@@ -21,6 +21,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 
 from .llm import reason, get_last_fallback_reason
 from .threat_intel import load_local_feed
@@ -30,13 +31,26 @@ SEVERITY_NORMALIZE = {
     "UNKNOWN": "LOW",
 }
 
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 
 def _find_trivy():
     exe = shutil.which("trivy")
     if exe:
         return exe
-    # A just-installed winget package isn't always on PATH for the current
-    # process without a fresh shell, so also check its known install location.
+    # scripts/render_build.sh installs trivy into ./bin (relative to the repo
+    # root) rather than a system PATH location - a native-runtime build/start
+    # command isn't guaranteed to share write access to system directories,
+    # but the project's own checkout persists from build into the running
+    # service.
+    local_bin = os.path.join(_REPO_ROOT, "bin", "trivy")
+    if os.path.isfile(local_bin) and os.access(local_bin, os.X_OK):
+        return local_bin
+    if sys.platform != "win32":
+        return None
+    # Windows-only: a just-installed winget package isn't always on PATH for
+    # the current process without a fresh shell, so also check its known
+    # install location.
     candidates = glob.glob(os.path.expandvars(
         r"%LOCALAPPDATA%\Microsoft\WinGet\Packages\AquaSecurity.Trivy_*\trivy.exe"
     ))
@@ -47,7 +61,8 @@ def _run_trivy_json(args, timeout):
     """Returns (parsed_json, error_reason) - exactly one of the two is None."""
     trivy_bin = _find_trivy()
     if not trivy_bin:
-        return None, "trivy binary not found (checked PATH and the known winget install location)"
+        locations = ["PATH", "./bin"] + (["the winget install location"] if sys.platform == "win32" else [])
+        return None, f"trivy binary not found (checked {', '.join(locations)})"
     try:
         result = subprocess.run(
             [trivy_bin, *args, "--format", "json", "--quiet"],

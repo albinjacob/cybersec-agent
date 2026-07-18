@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: cybersec-agent
+    env: python
+    buildCommand: bash scripts/render_build.sh
+    startCommand: python app.py

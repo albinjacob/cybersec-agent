@@ -99,7 +99,11 @@ cybersec-agent/
 
 - **Trivy** (for real vulnerability scanning): install from
   [aquasecurity/trivy](https://github.com/aquasecurity/trivy) — the scanner auto-detects it
-  on `PATH` and falls back to static checks if it's absent.
+  on `PATH` and falls back to static checks if it's absent. On Render (or any host without
+  Trivy preinstalled), `scripts/render_build.sh` installs it automatically as part of the
+  build — either deploy via the included `render.yaml` (Blueprint), or paste
+  `bash scripts/render_build.sh` into an existing service's **Build Command** in the Render
+  dashboard.
 - **Live LLM reasoning**: paste an API key in the UI (BYOK).
 - **NVD threat intel** works out of the box (public API, no key), falling back to the bundled
   dataset if unreachable.

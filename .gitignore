@@ -7,3 +7,6 @@ output/state.json
 
 # Local tooling lock file
 .claude/scheduled_tasks.lock
+
+# Trivy binary downloaded by scripts/render_build.sh - not committed
+bin/
