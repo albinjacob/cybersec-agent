@@ -1,0 +1,72 @@
+[
+  {
+    "cve_id": "CVE-2019-6446",
+    "affected": ["numpy", "python:3.9"],
+    "keywords": ["python", "pickle", "numpy"],
+    "severity": "MEDIUM",
+    "summary": "numpy.load in NumPy before allows arbitrary code execution via crafted .npy/.npz file due to unsafe pickle deserialization."
+  },
+  {
+    "cve_id": "CVE-2019-5010",
+    "affected": ["python:3.9", "python-3.9-base"],
+    "keywords": ["python", "outdated base image"],
+    "severity": "MEDIUM",
+    "summary": "Multiple unpatched libraries bundled in older python base images carry known CVEs; base image should be pinned to a maintained, patched tag."
+  },
+  {
+    "cve_id": "CVE-2019-11324",
+    "affected": ["requests==2.6.0", "requests"],
+    "keywords": ["requests", "cert validation"],
+    "severity": "HIGH",
+    "summary": "python-requests before 2.20.0 does not properly validate certificates when using a custom CA bundle, allowing MITM attacks."
+  },
+  {
+    "cve_id": "CVE-2019-10906",
+    "affected": ["flask==0.12.2", "flask"],
+    "keywords": ["flask", "werkzeug", "debug"],
+    "severity": "HIGH",
+    "summary": "Older Flask/Werkzeug versions are vulnerable to debugger PIN bypass and information disclosure if debug mode is enabled in production."
+  },
+  {
+    "cve_id": "CVE-2017-18342",
+    "affected": ["pyyaml==5.1", "pyyaml"],
+    "keywords": ["pyyaml", "yaml.load"],
+    "severity": "CRITICAL",
+    "summary": "PyYAML yaml.load() allows arbitrary code execution via crafted YAML input due to unsafe default Loader. Use yaml.safe_load instead."
+  },
+  {
+    "cve_id": "CVE-2019-10906-jinja",
+    "affected": ["jinja2==2.10", "jinja2"],
+    "keywords": ["jinja2", "sandbox escape"],
+    "severity": "MEDIUM",
+    "summary": "Jinja2 before 2.10.1 sandboxed environment can be bypassed via format string exploitation, potentially leading to code execution."
+  },
+  {
+    "cve_id": "CVE-2018-14574",
+    "affected": ["django==2.0.1", "django"],
+    "keywords": ["django", "open redirect", "commonmiddleware"],
+    "severity": "MEDIUM",
+    "summary": "Django CommonMiddleware allows open redirect if APPEND_SLASH is enabled, via a crafted URL beginning with two slashes."
+  },
+  {
+    "cve_id": "CVE-2018-1000030",
+    "affected": ["django==2.0.1", "django"],
+    "keywords": ["django", "cve", "python", "memory disclosure"],
+    "severity": "HIGH",
+    "summary": "Django before 2.0.2 has a memory disclosure vulnerability via crafted image file uploads processed by the file upload handler."
+  },
+  {
+    "cve_id": "SSH-BRUTEFORCE-PATTERN",
+    "affected": ["openssh", "sshd"],
+    "keywords": ["ssh brute force", "failed password", "root login"],
+    "severity": "HIGH",
+    "summary": "Repeated failed SSH authentication attempts against privileged accounts (root/admin) from a single source IP is a classic credential-stuffing / brute-force pattern (aligns with MITRE ATT&CK T1110)."
+  },
+  {
+    "cve_id": "RECON-PATTERN-WPSCAN",
+    "affected": ["nginx", "web-server"],
+    "keywords": ["wp-admin", ".env", "path traversal", "recon"],
+    "severity": "MEDIUM",
+    "summary": "Automated scanning for common CMS admin paths, .env files, and path traversal payloads is a reconnaissance pattern preceding exploitation attempts (MITRE ATT&CK T1595)."
+  }
+]

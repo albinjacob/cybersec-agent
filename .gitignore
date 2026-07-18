@@ -1,0 +1,9 @@
+.env
+__pycache__/
+*.pyc
+
+# Debug dump regenerated on every run; output/report.md is kept as a demo backup.
+output/state.json
+
+# Local tooling lock file
+.claude/scheduled_tasks.lock

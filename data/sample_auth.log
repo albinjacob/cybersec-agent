@@ -1,0 +1,24 @@
+Jul 17 02:14:01 web-prod-01 sshd[2211]: Accepted publickey for deploy from 10.0.1.5 port 51322 ssh2
+Jul 17 02:15:03 web-prod-01 sshd[2244]: Failed password for root from 185.220.101.7 port 44012 ssh2
+Jul 17 02:15:04 web-prod-01 sshd[2245]: Failed password for root from 185.220.101.7 port 44014 ssh2
+Jul 17 02:15:05 web-prod-01 sshd[2246]: Failed password for root from 185.220.101.7 port 44016 ssh2
+Jul 17 02:15:06 web-prod-01 sshd[2247]: Failed password for root from 185.220.101.7 port 44018 ssh2
+Jul 17 02:15:07 web-prod-01 sshd[2248]: Failed password for root from 185.220.101.7 port 44020 ssh2
+Jul 17 02:15:08 web-prod-01 sshd[2249]: Failed password for root from 185.220.101.7 port 44022 ssh2
+Jul 17 02:15:09 web-prod-01 sshd[2250]: Failed password for root from 185.220.101.7 port 44024 ssh2
+Jul 17 02:15:10 web-prod-01 sshd[2251]: Failed password for admin from 185.220.101.7 port 44026 ssh2
+Jul 17 02:15:11 web-prod-01 sshd[2252]: Failed password for admin from 185.220.101.7 port 44028 ssh2
+Jul 17 02:15:12 web-prod-01 sshd[2253]: Accepted password for admin from 185.220.101.7 port 44030 ssh2
+Jul 17 02:15:13 web-prod-01 sudo[2260]:    admin : TTY=pts/0 ; PWD=/home/admin ; USER=root ; COMMAND=/bin/bash
+Jul 17 02:16:44 web-prod-01 kernel: [UFW BLOCK] IN=eth0 OUT= SRC=45.155.204.13 DST=10.0.1.20 PROTO=TCP SPT=51022 DPT=22 SYN
+Jul 17 02:16:44 web-prod-01 kernel: [UFW BLOCK] IN=eth0 OUT= SRC=45.155.204.13 DST=10.0.1.20 PROTO=TCP SPT=51022 DPT=3389 SYN
+Jul 17 02:16:45 web-prod-01 kernel: [UFW BLOCK] IN=eth0 OUT= SRC=45.155.204.13 DST=10.0.1.20 PROTO=TCP SPT=51022 DPT=8080 SYN
+Jul 17 02:16:45 web-prod-01 kernel: [UFW BLOCK] IN=eth0 OUT= SRC=45.155.204.13 DST=10.0.1.20 PROTO=TCP SPT=51022 DPT=6379 SYN
+Jul 17 02:16:46 web-prod-01 kernel: [UFW BLOCK] IN=eth0 OUT= SRC=45.155.204.13 DST=10.0.1.20 PROTO=TCP SPT=51022 DPT=27017 SYN
+Jul 17 02:20:01 web-prod-01 CRON[2290]: (root) CMD (/usr/local/bin/backup.sh)
+Jul 17 03:01:15 web-prod-01 nginx: 198.51.100.23 - - "GET /../../../../etc/passwd HTTP/1.1" 400 0
+Jul 17 03:01:16 web-prod-01 nginx: 198.51.100.23 - - "POST /api/login HTTP/1.1" 200 512
+Jul 17 03:01:17 web-prod-01 nginx: 198.51.100.23 - - "GET /wp-admin/setup-config.php HTTP/1.1" 404 0
+Jul 17 03:01:18 web-prod-01 nginx: 198.51.100.23 - - "GET /.env HTTP/1.1" 404 0
+Jul 17 03:45:09 web-prod-01 sshd[2311]: Accepted publickey for deploy from 10.0.1.5 port 51888 ssh2
+Jul 17 04:12:00 web-prod-01 sudo[2340]: admin : TTY=pts/1 ; PWD=/var/www ; USER=root ; COMMAND=/usr/bin/chmod 777 /var/www/uploads

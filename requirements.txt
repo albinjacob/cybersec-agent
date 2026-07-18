@@ -1,0 +1,19 @@
+# Cyber Security AI Agent — application dependencies.
+# (Note: data/requirements.txt is NOT this — it is an intentionally vulnerable
+#  sample file that the Vulnerability Scanner agent analyzes.)
+#
+#   python -m pip install -r requirements.txt
+#   python app.py          # Gradio UI
+#   python main.py         # CLI, writes output/report.md
+
+gradio>=4.44
+langgraph>=0.2
+requests>=2.31
+python-dotenv>=1.0
+numpy>=1.26
+scikit-learn>=1.3
+
+# Optional — only needed if you choose the local (offline) embedding provider
+# for policy RAG instead of an API-based one. Large download; leave commented
+# unless you want on-device embeddings.
+# sentence-transformers>=2.2
