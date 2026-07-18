@@ -1,0 +1,257 @@
+<title>Cyber Security AI Agent — Architecture</title>
+<style>
+:root{
+  --page-bg:#eef0f4; --surface:#ffffff; --surface-2:#f6f7fa;
+  --ink:#1b2230; --ink-muted:#5b6472; --border:#d7dbe3;
+  --accent:#3452c7; --accent-ink:#2540a8;
+  --done-bg:#eaf7f0; --done-border:#1f9d5c; --done-ink:#136b3e; --done-tag-bg:#dcf3e4;
+  --road-bg:#f2f2f5; --road-border:#9aa1af; --road-ink:#6b7280; --road-tag-bg:#e8e9ed;
+  --mono: ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+:root[data-theme="dark"]{
+  --page-bg:#12151c; --surface:#181c26; --surface-2:#1e232f;
+  --ink:#e6e9f0; --ink-muted:#9aa3b2; --border:#2b3140;
+  --accent:#7d93f2; --accent-ink:#a6b6f7;
+  --done-bg:#132a1f; --done-border:#2fbf71; --done-ink:#7fe3a8; --done-tag-bg:#123322;
+  --road-bg:#1b1e27; --road-border:#4a5262; --road-ink:#8891a0; --road-tag-bg:#232733;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --page-bg:#12151c; --surface:#181c26; --surface-2:#1e232f;
+    --ink:#e6e9f0; --ink-muted:#9aa3b2; --border:#2b3140;
+    --accent:#7d93f2; --accent-ink:#a6b6f7;
+    --done-bg:#132a1f; --done-border:#2fbf71; --done-ink:#7fe3a8; --done-tag-bg:#123322;
+    --road-bg:#1b1e27; --road-border:#4a5262; --road-ink:#8891a0; --road-tag-bg:#232733;
+  }
+}
+
+*{box-sizing:border-box;}
+body{
+  background:var(--page-bg); color:var(--ink); font-family:var(--sans);
+  padding:28px 20px 60px; line-height:1.45;
+}
+.wrap{max-width:1240px;margin:0 auto;}
+
+header.top{
+  display:flex; flex-direction:column; gap:6px; margin-bottom:22px;
+  border-bottom:1px solid var(--border); padding-bottom:16px;
+}
+header.top .eyebrow{
+  font-family:var(--mono); font-size:11.5px; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--accent-ink); font-weight:600;
+}
+header.top h1{font-size:26px; margin:0; font-weight:700; text-wrap:balance; letter-spacing:-.01em;}
+header.top p{margin:2px 0 0; color:var(--ink-muted); font-size:14px; max-width:70ch;}
+
+.legend{
+  display:flex; gap:18px; flex-wrap:wrap; margin-top:12px; font-size:12.5px; color:var(--ink-muted);
+}
+.legend .item{display:flex; align-items:center; gap:7px;}
+.legend .swatch{width:14px;height:14px;border-radius:3px;flex:none;}
+.legend .swatch.done{background:var(--done-bg);border:1.5px solid var(--done-border);}
+.legend .swatch.road{background:var(--road-bg);border:1.5px dashed var(--road-border);}
+
+/* ===== box primitives ===== */
+.box{
+  border-radius:8px; padding:11px 12px; background:var(--surface);
+  border:1.5px solid var(--border);
+}
+.box.done{background:var(--done-bg); border-color:var(--done-border);}
+.box.road{background:var(--road-bg); border:1.5px dashed var(--road-border);}
+.box h4{margin:0 0 3px; font-size:13px; font-weight:650;}
+.box.done h4{color:var(--done-ink);}
+.box.road h4{color:var(--road-ink);}
+.box p{margin:0; font-size:12px; color:var(--ink-muted); line-height:1.4;}
+.box.done p{color:#3d5f4c;}
+:root[data-theme="dark"] .box.done p, :root:not([data-theme="light"]) .box.done p{color:#a9d9bd;}
+.tags{display:flex; flex-wrap:wrap; gap:5px; margin-top:7px;}
+.tag{
+  font-family:var(--mono); font-size:10.5px; padding:2px 7px; border-radius:20px;
+  background:var(--done-tag-bg); color:var(--done-ink); border:1px solid var(--done-border);
+}
+.box.road .tag{background:var(--road-tag-bg); color:var(--road-ink); border:1px solid var(--road-border);}
+
+section.panel{
+  background:var(--surface-2); border:1px solid var(--border); border-radius:12px;
+  padding:16px 16px 18px; display:flex; flex-direction:column; gap:10px;
+}
+section.panel > .panel-head{display:flex; align-items:baseline; justify-content:space-between; gap:8px;}
+section.panel > .panel-head h3{
+  margin:0; font-size:13.5px; text-transform:uppercase; letter-spacing:.06em; font-weight:700; color:var(--ink);
+}
+section.panel > .panel-head span{font-size:11px; color:var(--ink-muted); font-family:var(--mono);}
+.stack{display:flex; flex-direction:column; gap:8px;}
+
+/* ===== grid layout ===== */
+.grid{
+  display:grid;
+  grid-template-columns: 220px 1fr 220px;
+  gap:16px;
+  align-items:start;
+}
+.center{display:flex; flex-direction:column; gap:16px;}
+
+.flow-arrow{
+  display:flex; align-items:center; justify-content:center; gap:8px;
+  color:var(--ink-muted); font-size:11px; font-family:var(--mono);
+}
+.flow-arrow::before, .flow-arrow::after{content:""; height:1px; flex:1; background:var(--border);}
+
+.agent-row{display:grid; grid-template-columns:repeat(5,1fr); gap:8px;}
+.action-cell{
+  grid-column: span 5;
+  display:flex; align-items:center; gap:10px;
+  border-top:1px dashed var(--border); padding-top:10px; margin-top:2px;
+}
+.action-cell .box{flex:1;}
+.action-cell .arrow-lbl{font-family:var(--mono); font-size:11px; color:var(--accent-ink); white-space:nowrap;}
+
+footer.crosscut{margin-top:16px;}
+.cc-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px;}
+
+.note{
+  font-size:12px; color:var(--ink-muted); border-left:3px solid var(--accent); padding:8px 12px;
+  background:var(--surface); border-radius:0 6px 6px 0; margin-top:2px;
+}
+.note b{color:var(--ink); font-weight:650;}
+
+@media (max-width: 980px){
+  .grid{grid-template-columns:1fr;}
+  .agent-row{grid-template-columns:repeat(2,1fr);}
+  .action-cell{grid-column:span 2;}
+}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <span class="eyebrow">System architecture — as built vs. roadmap</span>
+    <h1>Cyber Security AI Agent</h1>
+    <p>Every box below maps to real code in this repo. Solid green = implemented and verified this session; dashed grey = a reasonable next step, not yet built. No box claims more than what actually runs today.</p>
+    <div class="legend">
+      <div class="item"><span class="swatch done"></span> Implemented — live in the pipeline</div>
+      <div class="item"><span class="swatch road"></span> Roadmap — not built yet</div>
+    </div>
+  </header>
+
+  <div class="grid">
+    <!-- LEFT RAIL: Data Sources -->
+    <section class="panel">
+      <div class="panel-head"><h3>Data sources</h3></div>
+      <div class="stack">
+        <div class="box done"><h4>Sample auth log</h4><p>Bundled SSH brute-force + recon log the demo runs against.</p><div class="tags"><span class="tag">data/sample_auth.log</span></div></div>
+        <div class="box done"><h4>Dockerfile + requirements.txt</h4><p>Intentionally vulnerable sample the scanner targets.</p><div class="tags"><span class="tag">data/</span></div></div>
+        <div class="box done"><h4>User uploads</h4><p>Swap in your own log / Dockerfile / requirements file in the UI.</p></div>
+        <div class="box done"><h4>NIST 800-53 catalog</h4><p>~1,014 controls, flattened and cached for retrieval.</p><div class="tags"><span class="tag">scripts/fetch_nist</span></div></div>
+        <div class="box done"><h4>ISO / SOC2 excerpt</h4><p>Condensed policy text for the TF-IDF fallback path.</p></div>
+        <div class="box done"><h4>Local CVE dataset</h4><p>Offline fallback feed when NVD is unreachable.</p><div class="tags"><span class="tag">cve_dataset.json</span></div></div>
+        <div class="box road"><h4>Streaming ingestion</h4><p>Tail live log sources (syslog, CloudTrail) instead of static files.</p></div>
+        <div class="box road"><h4>SIEM forwarding in</h4><p>Pull findings context from Splunk / Sentinel directly.</p></div>
+      </div>
+    </section>
+
+    <!-- CENTER COLUMN -->
+    <div class="center">
+      <section class="panel">
+        <div class="panel-head"><h3>User interfaces</h3></div>
+        <div class="stack" style="flex-direction:row; flex-wrap:wrap;">
+          <div class="box done" style="flex:1;min-width:180px;"><h4>Gradio web UI</h4><p>Live pipeline tracker, BYOK settings, report view.</p><div class="tags"><span class="tag">app.py</span></div></div>
+          <div class="box done" style="flex:1;min-width:180px;"><h4>CLI</h4><p>Headless run — writes report.md + state.json.</p><div class="tags"><span class="tag">main.py</span></div></div>
+          <div class="box road" style="flex:1;min-width:180px;"><h4>Slack slash command</h4><p>Trigger a run or query status from Slack directly.</p></div>
+        </div>
+      </section>
+
+      <div class="flow-arrow">orchestrated by LangGraph StateGraph</div>
+
+      <section class="panel">
+        <div class="panel-head"><h3>Multi-agent system</h3><span>orchestrator.py</span></div>
+        <div class="agent-row">
+          <div class="box done"><h4>Log Monitor</h4><p>Parses auth logs for brute-force / recon / port-scan signals.</p></div>
+          <div class="box done"><h4>Threat Intel</h4><p>Correlates surfaced CVEs against a live feed.</p><div class="tags"><span class="tag">NVD API</span></div></div>
+          <div class="box done"><h4>Vuln Scanner</h4><p>Scans Dockerfile + deps for misconfig and CVEs.</p><div class="tags"><span class="tag">Trivy</span></div></div>
+          <div class="box done"><h4>Incident Response</h4><p>Turns findings into a prioritized remediation plan.</p></div>
+          <div class="box done"><h4>Policy Checker</h4><p>Maps gaps to NIST/ISO/SOC2 controls via semantic RAG.</p></div>
+          <div class="action-cell">
+            <span class="arrow-lbl">⇥ terminal action, not a 6th agent</span>
+            <div class="box done"><h4>Notify</h4><p>Dispatches a Slack message / email when a finding meets the configured severity threshold.</p><div class="tags"><span class="tag">Slack webhook</span><span class="tag">Gmail SMTP</span></div></div>
+          </div>
+        </div>
+        <div class="note"><b>Honest framing:</b> this is a fixed, compiled DAG (LangGraph <code>StateGraph</code>) with deterministic edges, not a dynamic supervisor agent that decides its own routing at runtime.</div>
+      </section>
+
+      <div class="flow-arrow">shared state</div>
+
+      <section class="panel">
+        <div class="panel-head"><h3>Agent communication &amp; state</h3></div>
+        <div class="stack" style="flex-direction:row;flex-wrap:wrap;">
+          <div class="box done" style="flex:1;min-width:200px;"><h4>In-process shared state</h4><p>A single <code>TypedDict</code> threaded through the graph; each node reads prior nodes' keys.</p><div class="tags"><span class="tag">PipelineState</span></div></div>
+          <div class="box done" style="flex:1;min-width:200px;"><h4>Live progress stream</h4><p><code>.stream()</code> in "updates" mode powers the real-time UI tracker.</p></div>
+          <div class="box road" style="flex:1;min-width:200px;"><h4>Distributed message bus</h4><p>Kafka/queue-based hand-off for multi-process or multi-host agents.</p></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head"><h3>Shared memory &amp; knowledge layer</h3></div>
+        <div class="stack" style="flex-direction:row;flex-wrap:wrap;">
+          <div class="box done" style="flex:1;min-width:200px;"><h4>Embedding cache</h4><p>Precomputed NumPy vectors over the full NIST catalog — a local cache, not a hosted vector DB.</p><div class="tags"><span class="tag">.npy + .json</span></div></div>
+          <div class="box done" style="flex:1;min-width:200px;"><h4>Run transparency log</h4><p>Every agent records which real vs. fallback path executed.</p><div class="tags"><span class="tag">state.json</span></div></div>
+          <div class="box road" style="flex:1;min-width:200px;"><h4>Hosted vector database</h4><p>Pinecone/pgvector for scale beyond a single-host cache.</p></div>
+          <div class="box road" style="flex:1;min-width:200px;"><h4>Case / incident store</h4><p>Persist runs across sessions for historical correlation.</p></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head"><h3>Foundation layer</h3></div>
+        <div class="stack" style="flex-direction:row;flex-wrap:wrap;">
+          <div class="box done" style="flex:1;min-width:200px;"><h4>LLM reasoning</h4><p>Anthropic / OpenAI / OpenRouter via BYOK, per-session key.</p><div class="tags"><span class="tag">agents/llm.py</span></div></div>
+          <div class="box done" style="flex:1;min-width:200px;"><h4>Embedding models</h4><p>OpenAI / OpenRouter API embeddings, or local sentence-transformers.</p><div class="tags"><span class="tag">agents/embeddings.py</span></div></div>
+          <div class="box done" style="flex:1;min-width:200px;"><h4>RAG retrieval</h4><p>Cosine similarity over cached vectors; TF-IDF keyword fallback.</p></div>
+          <div class="box done" style="flex:1;min-width:200px;"><h4>Deterministic fallback</h4><p>Rule-based mock reasoning when no key is configured — every agent still completes.</p></div>
+          <div class="box road" style="flex:1;min-width:200px;"><h4>Prompt / eval framework</h4><p>Versioned prompts with regression evals across model swaps.</p></div>
+          <div class="box road" style="flex:1;min-width:200px;"><h4>Full observability</h4><p>Tracing/metrics dashboard beyond the per-run transparency log.</p></div>
+        </div>
+      </section>
+    </div>
+
+    <!-- RIGHT RAIL -->
+    <div style="display:flex;flex-direction:column;gap:16px;">
+      <section class="panel">
+        <div class="panel-head"><h3>External integrations</h3></div>
+        <div class="stack">
+          <div class="box done"><h4>Trivy</h4><p>Real config + dependency CVE scans; auto-installed on Render.</p></div>
+          <div class="box done"><h4>NVD REST API</h4><p>Live CVE lookups, no key required.</p></div>
+          <div class="box done"><h4>Slack webhook</h4><p>Real-time alert dispatch on qualifying findings.</p></div>
+          <div class="box done"><h4>Gmail SMTP</h4><p>Email alert dispatch via app password.</p></div>
+          <div class="box road"><h4>SIEM / SOAR</h4><p>Splunk, Sentinel, or XSOAR two-way integration.</p></div>
+          <div class="box road"><h4>ITSM (Jira/ServiceNow)</h4><p>Auto-file tickets from Incident Response output.</p></div>
+          <div class="box road"><h4>Cloud security posture</h4><p>AWS/Azure/GCP config scanning alongside container scanning.</p></div>
+          <div class="box road"><h4>EDR / firewall</h4><p>Pull endpoint telemetry or push blocking rules.</p></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head"><h3>Outputs</h3></div>
+        <div class="stack">
+          <div class="box done"><h4>Prioritized alert</h4><p>Slack/email, only for findings at/above the configured severity.</p></div>
+          <div class="box done"><h4>Markdown report</h4><p>One stitched report from every stage's output.</p><div class="tags"><span class="tag">report_builder.py</span></div></div>
+          <div class="box done"><h4>Remediation playbook</h4><p>Incident Response's actionable, ranked fix list.</p></div>
+          <div class="box done"><h4>Compliance gap report</h4><p>Findings mapped to specific NIST/ISO/SOC2 controls.</p></div>
+          <div class="box road"><h4>Historical trend dashboard</h4><p>Track findings and remediation velocity across runs over time.</p></div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <footer class="crosscut panel" style="margin-top:16px;">
+    <div class="panel-head"><h3>Cross-cutting capabilities</h3></div>
+    <div class="cc-grid">
+      <div class="box done"><h4>BYOK key handling</h4><p>Session-scoped, never persisted or logged.</p></div>
+      <div class="box done"><h4>Graceful degradation</h4><p>Every integration has a labeled offline fallback — no hard fails on a live demo.</p></div>
+      <div class="box done"><h4>Run transparency</h4><p><code>*_mode</code> / <code>*_fallback_reason</code> on every agent, surfaced as UI warnings.</p></div>
+      <div class="box road"><h4>RBAC / auth</h4><p>Multi-user access control for a shared deployment.</p></div>
+      <div class="box road"><h4>Encryption at rest</h4><p>For persisted run history, once it exists.</p></div>
+      <div class="box road"><h4>Audit log</h4><p>Immutable, queryable history of who ran what.</p></div>
+      <div class="box road"><h4>HA / DR</h4><p>Multi-instance deployment beyond a single Render web service.</p></div>
+    </div>
+  </footer>
+</div>
