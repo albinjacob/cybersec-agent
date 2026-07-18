@@ -2,7 +2,7 @@
 Embeddings wrapper for Policy Checker's RAG retrieval.
 
 Design mirrors agents/llm.py: configure(provider, api_key, model) sets a BYOK
-override from the UI; auto-detects from the environment otherwise. Two
+override from the UI; auto-detects from the environment otherwise. Three
 providers:
 
   - "local": sentence-transformers running fully offline on CPU, no API key,
@@ -10,8 +10,17 @@ providers:
     model weights download once from Hugging Face Hub, then everything runs
     in-process). This is the default when nothing else is configured, since
     it works with zero setup - the same reasoning agents/llm.py falls back
-    to a deterministic mock reasoner rather than requiring a key.
+    to a deterministic mock reasoner rather than requiring a key. It's also
+    the heaviest to install (pulls in PyTorch), so it's the wrong choice for
+    a lean cloud deploy - see "openrouter" below.
   - "openai": OpenAI's real embeddings API (text-embedding-3-small/large).
+  - "openrouter": the same OpenAI-compatible embeddings request, routed
+    through OpenRouter's unified endpoint. Lets a deploy that already has
+    OPENROUTER_API_KEY configured for LLM reasoning (agents/llm.py) get real
+    semantic embeddings too, with no extra key and no PyTorch install -
+    the natural choice for a resource-constrained host like Render's free
+    tier, where "local" risks an out-of-memory crash and no OPENAI_API_KEY
+    may be set.
 
 Unlike agents/llm.py there is no "mock" tier here - "local" already runs at
 zero cost and zero configuration, so it doubles as the always-available
@@ -26,9 +35,11 @@ import os
 DEFAULT_MODELS = {
     "local": "all-MiniLM-L6-v2",
     "openai": "text-embedding-3-small",
+    "openrouter": "openai/text-embedding-3-small",
 }
 
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 
 # BYOK overrides set via configure(); None means "auto" (see current_provider_and_model)
 _RUNTIME = {"provider": None, "api_key": None, "model": None}
@@ -39,7 +50,7 @@ _local_model_cache = {}  # model name -> loaded SentenceTransformer instance, ca
 def configure(provider=None, api_key=None, model=None):
     """
     Set BYOK overrides from the UI. provider is one of
-    "local" / "openai" / "auto" (or None, same as "auto").
+    "local" / "openai" / "openrouter" / "auto" (or None, same as "auto").
     Passing provider="auto" (or None) clears overrides and reverts to
     environment-based auto-detection.
     """
@@ -56,11 +67,15 @@ def configure(provider=None, api_key=None, model=None):
 def current_provider_and_model():
     """What embed() will actually use right now, without calling it - used by
     the UI to show current status and to validate a cache against the live
-    config before trusting it."""
+    config before trusting it. Auto-detect priority mirrors agents/llm.py:
+    a native provider (OpenAI) before the OpenRouter proxy, before the
+    always-available local fallback."""
     if _RUNTIME["provider"]:
         return _RUNTIME["provider"], _RUNTIME["model"] or DEFAULT_MODELS.get(_RUNTIME["provider"])
     if OPENAI_API_KEY:
         return "openai", DEFAULT_MODELS["openai"]
+    if OPENROUTER_API_KEY:
+        return "openrouter", DEFAULT_MODELS["openrouter"]
     return "local", DEFAULT_MODELS["local"]
 
 
@@ -91,6 +106,30 @@ def _embed_openai(texts, api_key, model_name):
     return [d["embedding"] for d in ordered]
 
 
+def _embed_openrouter(texts, api_key, model_name):
+    # Same OpenAI-compatible shape as _embed_openai, routed through
+    # OpenRouter's unified endpoint - lets a deploy with only an
+    # OPENROUTER_API_KEY (the key already used for LLM reasoning) get real
+    # embeddings without a separate OpenAI key or the heavy local model.
+    import requests
+    resp = requests.post(
+        "https://openrouter.ai/api/v1/embeddings",
+        headers={"Authorization": f"Bearer {api_key}", "content-type": "application/json"},
+        json={"model": model_name, "input": list(texts)},
+        timeout=60,
+    )
+    resp.raise_for_status()
+    data = resp.json()["data"]
+    ordered = sorted(data, key=lambda d: d.get("index", 0))
+    return [d["embedding"] for d in ordered]
+
+
+_API_EMBEDDERS = {
+    "openai": (_embed_openai, lambda: OPENAI_API_KEY, "No OpenAI API key configured for embeddings"),
+    "openrouter": (_embed_openrouter, lambda: OPENROUTER_API_KEY, "No OpenRouter API key configured for embeddings"),
+}
+
+
 def embed(texts):
     """
     Embed a list of strings (or a single string). Returns
@@ -102,11 +141,12 @@ def embed(texts):
     text_list = [texts] if single else list(texts)
 
     provider, model = current_provider_and_model()
-    if provider == "openai":
-        api_key = _RUNTIME["api_key"] or OPENAI_API_KEY
+    if provider in _API_EMBEDDERS:
+        caller, env_key_fn, missing_msg = _API_EMBEDDERS[provider]
+        api_key = _RUNTIME["api_key"] or env_key_fn()
         if not api_key:
-            raise RuntimeError("No OpenAI API key configured for embeddings")
-        vectors = _embed_openai(text_list, api_key, model)
+            raise RuntimeError(missing_msg)
+        vectors = caller(text_list, api_key, model)
     else:
         vectors = _embed_local(text_list, model)
 

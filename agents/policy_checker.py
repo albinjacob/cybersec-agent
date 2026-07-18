@@ -216,12 +216,30 @@ def _is_user_supplied_policy(policy_path):
         return False
 
 
+def _local_embeddings_available():
+    """Cheap check for whether sentence-transformers is actually importable -
+    it's an optional dependency (large, offline-only), so a cache built with
+    provider="local" can be config-valid but still unusable in an environment
+    that never installed it (e.g. a lean deploy)."""
+    try:
+        import sentence_transformers  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
 def _get_index(policy_path):
     """Returns (index, embedding_mode, fallback_reason)."""
     meta, vectors = _load_cached_index()
     if meta is not None and vectors is not None:
         current_provider, current_model = embeddings.current_provider_and_model()
         if (meta["embedding_provider"], meta["embedding_model"]) == (current_provider, current_model):
+            if current_provider == "local" and not _local_embeddings_available():
+                return (
+                    PolicyIndex(load_policy_chunks(policy_path)), "tfidf-fallback",
+                    "sentence-transformers not installed - using keyword-based matching "
+                    "over the small excerpt instead.",
+                )
             # A user-uploaded policy isn't in the prebuilt cache; embed it now
             # and search it alongside NIST rather than ignoring it.
             extra = None
@@ -248,10 +266,7 @@ def _mock_summary(gaps):
     return "\n".join(lines)
 
 
-def run(policy_path: str, all_findings):
-    index, embedding_mode, embedding_fallback_reason = _get_index(policy_path)
-    min_score = EMBEDDING_MIN_SCORE if embedding_mode == "embeddings" else TFIDF_MIN_SCORE
-
+def _retrieve_all(index, all_findings, min_score):
     gaps = []
     for f in all_findings:
         query = f.get("detail", "")
@@ -263,6 +278,24 @@ def run(policy_path: str, all_findings):
                 "score": score,
                 "source": source,
             })
+    return gaps
+
+
+def run(policy_path: str, all_findings):
+    # embeddings.embed() raises on failure (missing dependency, bad key,
+    # network error) by design - this is the safety net that turns that into
+    # a graceful TF-IDF fallback instead of crashing the whole pipeline node.
+    # Covers both index construction (_get_index() may itself call embed() to
+    # embed a user-supplied policy doc) and per-query retrieval.
+    try:
+        index, embedding_mode, embedding_fallback_reason = _get_index(policy_path)
+        min_score = EMBEDDING_MIN_SCORE if embedding_mode == "embeddings" else TFIDF_MIN_SCORE
+        gaps = _retrieve_all(index, all_findings, min_score)
+    except Exception as e:
+        embedding_mode = "tfidf-fallback"
+        embedding_fallback_reason = f"Embedding failed ({e}) - falling back to keyword search."
+        index = PolicyIndex(load_policy_chunks(policy_path))
+        gaps = _retrieve_all(index, all_findings, TFIDF_MIN_SCORE)
 
     system_prompt = (
         "You are a compliance analyst. Given security findings mapped to policy "

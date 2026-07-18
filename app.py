@@ -74,9 +74,11 @@ EMBEDDING_PROVIDER_LABELS = {
     "Auto (local, no key needed)": "auto",
     "Local (sentence-transformers)": "local",
     "OpenAI": "openai",
+    "OpenRouter": "openrouter",
 }
 LOCAL_EMBEDDING_MODELS = ["all-MiniLM-L6-v2"]
 OPENAI_EMBEDDING_MODELS = ["text-embedding-3-small", "text-embedding-3-large"]
+OPENROUTER_EMBEDDING_MODELS = ["openai/text-embedding-3-small", "openai/text-embedding-3-large"]
 
 REPORT_PATH = os.path.join("output", "report.md")
 
@@ -102,6 +104,8 @@ def embedding_models_for_provider(provider_label):
         return gr.update(choices=LOCAL_EMBEDDING_MODELS, value=LOCAL_EMBEDDING_MODELS[0], interactive=True)
     if provider == "openai":
         return gr.update(choices=OPENAI_EMBEDDING_MODELS, value=OPENAI_EMBEDDING_MODELS[0], interactive=True)
+    if provider == "openrouter":
+        return gr.update(choices=OPENROUTER_EMBEDDING_MODELS, value=OPENROUTER_EMBEDDING_MODELS[0], interactive=True)
     return gr.update(choices=[], value=None, interactive=False)
 
 
@@ -420,7 +424,7 @@ with gr.Blocks(title="CyberSec AI Agent") as demo:
             "## 🔎 Policy RAG Embeddings\n"
             "Controls semantic search for the Policy Checker agent only - separate from the reasoning "
             "model above, which affects all 5 agents. Defaults to local, offline embeddings; no API "
-            "key needed unless you pick OpenAI."
+            "key needed unless you pick OpenAI or OpenRouter."
         )
         embed_provider_radio = gr.Radio(
             choices=list(EMBEDDING_PROVIDER_LABELS.keys()),
