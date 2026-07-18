@@ -48,7 +48,7 @@ def build_report(state) -> str:
         lines.append("Start with **section 4 (Incident Response — Action Plan)** for prioritized remediation, "
                      "then **section 5 (Policy Checker)** for the affected compliance controls.")
     if notify and notify.get("mode") == "sent":
-        lines.append(f"📣 {notify['sent_count']} alert(s) dispatched to Slack/email for the findings above.")
+        lines.append(f"📣 {notify['sent_count']} alert(s) dispatched to Slack for the findings above.")
     lines.append(f"_Reasoning mode per agent: {modes}_")
     lines.append("")
     lines.append("---")
@@ -63,6 +63,11 @@ def build_report(state) -> str:
     lines.append("")
     lines.append("## 4. Incident Response Agent - Action Plan")
     lines.append(ir["summary"])
+    for item in ir.get("plan", []):
+        c = item.get("council")
+        if c and c.get("mode") == "live":
+            tag = "AGREE" if c["agreement"] else "DISAGREE"
+            lines.append(f"\n> 🏛️ **Model Council** ({tag}) on \"{item['issue']}\": {c['judge_verdict']}")
     lines.append("")
     lines.append("## 5. Policy Checker Agent - Compliance Gaps")
     lines.append(pc["summary"])

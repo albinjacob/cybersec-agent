@@ -5,6 +5,7 @@ Takes the combined findings from Log Monitor, Threat Intel, and Vulnerability
 Scanner, and produces a prioritized, step-by-step remediation plan.
 """
 
+from . import council
 from .llm import reason, get_last_fallback_reason
 
 PLAYBOOKS = {
@@ -80,6 +81,18 @@ def build_plan(log_findings, vuln_findings):
     return plan
 
 
+def _attach_council(plan):
+    """Second-opinion + judge review for CRITICAL items only - the added
+    latency/cost of a 3-call council is bounded to the findings that actually
+    warrant it. Non-CRITICAL items get council=None; unaffected otherwise."""
+    for item in plan:
+        if item["severity"] == "CRITICAL":
+            item["council"] = council.run_council(item["issue"], item["steps"])
+        else:
+            item["council"] = None
+    return plan
+
+
 def _mock_summary(plan):
     lines = ["Incident Response Agent - prioritized action plan:"]
     for i, item in enumerate(plan, 1):
@@ -91,6 +104,7 @@ def _mock_summary(plan):
 
 def run(log_findings, vuln_findings):
     plan = build_plan(log_findings, vuln_findings)
+    plan = _attach_council(plan)
     system_prompt = (
         "You are an incident response lead. Given a prioritized list of issues "
         "and remediation steps, write a clear, executive-readable action plan, "

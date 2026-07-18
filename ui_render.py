@@ -44,6 +44,10 @@ ACCENT = "#06b6d4"   # cyan - matches the app theme's primary hue
 OK_GREEN = "#16a34a"
 WARN_AMBER = "#f59e0b"
 IDLE_GREY = "#94a3b8"  # "no data yet" - deliberately NOT a severity colour
+# Purple reads as "role", not "status" - distinct from ACCENT (the app's own
+# brand hue), the severity palette, and NEUTRAL_COLOR (already used for
+# compliance-framework badges elsewhere) so it can't be misread as any of those.
+ADMIN_ACCENT = "#a855f7"
 
 TYPE_ICONS = {
     "ssh_bruteforce": "🔓",
@@ -165,6 +169,21 @@ def icon_html(name: str, size: int = 16, extra_style: str = "") -> str:
         attrs = 'fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"'
     return (f'<svg viewBox="0 0 24 24" width="{size}" height="{size}" {attrs} '
             f'style="vertical-align:-3px;flex-shrink:0;{extra_style}">{shape}</svg>')
+
+
+def nav_section_label_html(text, color, subtitle=None):
+    """Small uppercase divider label for the left nav sidebar, splitting
+    "what a regular user runs" from "what a developer/reviewer inspects" -
+    purely a visual/organisational grouping (this app has no role-based
+    login), so the wording says that plainly rather than implying an access
+    control that doesn't exist."""
+    sub = f'<div style="font-size:10px; font-weight:400; letter-spacing:0; margin-top:1px; opacity:0.8;">{subtitle}</div>' if subtitle else ""
+    return (
+        f'<div style="margin:14px 0 4px 4px; padding-top:10px; border-top:1px solid var(--border-color-primary);">'
+        f'<div style="font-size:10.5px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:{color};">{text}</div>'
+        f'{sub}'
+        '</div>'
+    )
 
 
 def _icon_data_uri(name: str) -> str:
@@ -356,6 +375,49 @@ GLOSSARY = {
               "config files and dependency lockfiles against known vulnerabilities.",
         url="https://github.com/aquasecurity/trivy",
     ),
+    "Golden case": dict(
+        gloss="A hand-written test case with a known-correct answer, e.g. 'this exact finding "
+              "should map to control AC-7'. Used the same way a unit test's expected output is - "
+              "as a fixed yardstick, not something the AI graded itself.",
+        url=None,
+    ),
+    "Precision@1": dict(
+        gloss="Of the single best-matching result the system retrieved, was it actually correct? "
+              "100% means the top result was right every time; lower means it's often pointing at "
+              "the wrong control.",
+        url=None,
+    ),
+    "Recall@3": dict(
+        gloss="Looking at the top 3 results (not just the very best one), was the correct answer "
+              "in there somewhere? Usually higher than Precision@1, since it gives the system more "
+              "chances to include the right answer.",
+        url=None,
+    ),
+    "LLM-as-a-judge": dict(
+        gloss="Instead of a human grading an AI's answer, a second AI call does it - given a "
+              "rubric, it scores the first answer and explains why. Cheaper and faster than human "
+              "review, though it can inherit the same kinds of mistakes an AI can make.",
+        url=None,
+    ),
+    "Faithfulness": dict(
+        gloss="Did the summary only state facts that were actually present in the input findings, "
+              "or did it invent something (a CVE, a detail, a severity) that wasn't there? A "
+              "faithful answer can still be incomplete - this only checks it isn't making things up.",
+        url=None,
+    ),
+    "Consistency": dict(
+        gloss="The same question is asked multiple times and the scores are compared. If they "
+              "swing wildly run to run, the answer isn't reliable even when it's sometimes good - "
+              "shown here as how much the score varies, not just its average.",
+        url=None,
+    ),
+    "Offline embeddings": dict(
+        gloss="Runs a small open-source model (sentence-transformers, all-MiniLM-L6-v2) directly "
+              "on the server - no external API call, no key, no per-request cost. Slightly lower "
+              "semantic quality than OpenRouter's larger hosted models, but real semantic search "
+              "over the full catalog, not a keyword-only fallback.",
+        url="https://www.sbert.net/",
+    ),
 }
 
 
@@ -539,7 +601,7 @@ def agent_fallback_warnings(key, state):
     # (sent/skipped/no-alert/offline-fallback), not reasoning_mode.
     if key == "notify":
         if s.get("mode") == "skipped":
-            warnings.append(("Notifications", "Alert-worthy findings present, but no Slack/email channel is configured"))
+            warnings.append(("Notifications", "Alert-worthy findings present, but no Slack channel is configured"))
         elif s.get("mode") == "offline-fallback":
             failed = [c["detail"] for c in s.get("channels", []) if c.get("status") == "failed"]
             warnings.append(("Notifications", "; ".join(failed) or "All configured channels failed to send"))
@@ -658,6 +720,37 @@ def render_threat_intel_cards(matches):
     return _cards_wrap(cards, "No known CVEs/threat patterns matched current findings.")
 
 
+def _council_block_html(council):
+    """Model Council sub-block for a CRITICAL card: two independent model
+    opinions plus a judge's reconciled verdict, with an agree/disagree chip
+    (green = agree, amber = disagree - same palette as the rest of the app's
+    ok/warn states)."""
+    if not council or council.get("mode") != "live":
+        return ""
+    tone_color = OK_GREEN if council["agreement"] else WARN_AMBER
+    tone_label = "AGREE" if council["agreement"] else "DISAGREE"
+    return (
+        '<div style="margin-top:12px; padding-top:10px; border-top:1px dashed var(--border-color-primary);">'
+        '<div style="font-weight:700; font-size:12.5px; margin-bottom:6px;">🏛️ Model Council '
+        '<span style="font-weight:400; font-size:11px;" class="subdued-text">- a second model reviews '
+        'this finding independently, then a judge reconciles both opinions</span></div>'
+        '<div style="display:flex; gap:10px; flex-wrap:wrap;">'
+        f'<div style="flex:1; min-width:220px; font-size:12px; background:var(--background-fill-secondary); '
+        f'border-radius:8px; padding:8px 10px;"><b>Opinion A</b> <span class="subdued-text">({council["model_a"]})</span>'
+        f'<div style="margin-top:4px;">{council["opinion_a"]}</div></div>'
+        f'<div style="flex:1; min-width:220px; font-size:12px; background:var(--background-fill-secondary); '
+        f'border-radius:8px; padding:8px 10px;"><b>Opinion B</b> <span class="subdued-text">({council["model_b"]})</span>'
+        f'<div style="margin-top:4px;">{council["opinion_b"]}</div></div>'
+        '</div>'
+        f'<div style="margin-top:8px; padding:8px 10px; border-radius:8px; background:{tone_color}1a; '
+        f'border:1px solid {tone_color}55;">'
+        f'<span style="font-size:11px; font-weight:700; color:{tone_color}; letter-spacing:0.03em;">{tone_label}</span>'
+        f'<div style="margin-top:4px; font-size:12.5px;"><b>Judge\'s verdict:</b> {council["judge_verdict"]}</div>'
+        '</div>'
+        '</div>'
+    )
+
+
 def render_incident_response_cards(plan):
     items = sorted(plan, key=lambda p: SEVERITY_ORDER.get(p["severity"], 4))
     high_count = sum(1 for p in items if p["severity"] == "HIGH")
@@ -672,7 +765,8 @@ def render_incident_response_cards(plan):
         extra = (f'<div style="margin-top:8px; font-size:12.5px;"><b>💡 What this means:</b> {explain}</div>'
                  f'<ul style="margin:10px 0 4px 0; padding-left:20px; font-size:13px;">{steps_html}</ul>'
                  f'<div class="subdued-text" style="margin-top:4px; font-size:11px;">via '
-                 f'{p["source_agent"].replace("_", " ").title()}</div>')
+                 f'{p["source_agent"].replace("_", " ").title()}</div>'
+                 f'{_council_block_html(p.get("council"))}')
         # CRITICAL always open; HIGH open only if <5 total HIGH; MEDIUM/LOW closed
         should_open = p["severity"] == "CRITICAL" or (p["severity"] == "HIGH" and high_count < 5)
         cards.append(_card_html("🚨", p["issue"], priority_label.get(p["severity"], p["severity"]),
@@ -777,7 +871,7 @@ def _tracker_node_html(key, status, duration, has_fallback):
 def pipeline_tracker_html(node_statuses=None, durations=None, state=None, error=None, caption=None):
     """The live LangGraph DAG: [Log Monitor ∥ Vuln Scanner] → Threat Intel →
     Incident Response → Policy Checker → Notify, with per-node status + timing.
-    Notify is a terminal action stage (dispatches Slack/email alerts), not a
+    Notify is a terminal action stage (dispatches Slack alerts), not a
     6th reasoning agent - drawn with a distinct "action" tag and hand-off
     arrow so that distinction is visible, not just implied."""
     node_statuses = node_statuses or {k: "idle" for k in PIPELINE_ORDER}
@@ -814,7 +908,7 @@ def pipeline_tracker_html(node_statuses=None, durations=None, state=None, error=
     action = (
         '<div class="pl-branch pl-action">'
         '<div class="pl-branch-tag pl-action-tag" title="Deterministic dispatch, not an LLM '
-        'reasoning step - sends Slack/email alerts for findings at or above the configured '
+        'reasoning step - sends a Slack alert for findings at or above the configured '
         'severity">action</div>'
         f'{node("notify")}'
         '</div>'
@@ -940,8 +1034,12 @@ def _subsystem_health(state, preflight=None):
         if pre is None:
             return (key, "checked on run", "on run", "idle", True,
                     f"{label}: can't be known until you run - it needs a live network call")
-        value, tone = pre
-        return (key, value, value, tone, True, f"{label}: {value} (configured, not yet exercised)")
+        # A 3rd, optional element is tooltip-only detail (e.g. which embedding
+        # provider is configured) - kept out of `value` so the compact topbar
+        # chip stays terse; only the tooltip gets the extra specificity.
+        value, tone, *extra = pre
+        detail = f" ({extra[0]})" if extra and extra[0] else ""
+        return (key, value, value, tone, True, f"{label}: {value}{detail} (configured, not yet exercised)")
 
     # LLM - one provider per run, so any completed agent's mode is representative.
     # notify has no reasoning_mode (it's not an LLM-reasoning stage), so it's
@@ -970,23 +1068,51 @@ def _subsystem_health(state, preflight=None):
     pc = state.get("policy_checker")
     observed = None
     if pc:
-        observed = (("semantic · live", "semantic", "ok") if pc.get("embedding_mode") == "embeddings"
-                    else ("TF-IDF fallback", "TF-IDF", "warn"))
+        if pc.get("embedding_mode") == "embeddings":
+            detail = (f" ({pc['embedding_provider']}/{pc['embedding_model']})"
+                      if pc.get("embedding_provider") else "")
+            observed = (f"semantic · live{detail}", "semantic", "ok")
+        else:
+            observed = ("TF-IDF fallback", "TF-IDF", "warn")
     rows.append(ready_row("policy_rag", observed))
 
     return rows
 
 
-def topbar_health_html(state=None, preflight=None):
+def topbar_health_html(state=None, preflight=None, exclude=None):
     """Compact status chips for the top app bar - the single place subsystem
     health is shown, so it's visible from every page rather than only the
     Overview. Uses the `short` values ("Trivy" not "Trivy · live") to fit
     beside the brand; the dot carries the meaning (ring = configured/ready,
-    filled = observed this run) and each chip has a tooltip spelling it out."""
+    filled = observed this run) and each chip has a tooltip spelling it out.
+
+    `exclude`, if given, is a subsystem key or collection of keys to drop from
+    the rendered HTML - used to pull "llm" and "policy_rag" out so app.py can
+    render them as real, clickable gr.Buttons (see subsystem_chip_state())
+    instead of inert HTML, without duplicating them here too."""
     state = state or {}
+    exclude_keys = {exclude} if isinstance(exclude, str) else set(exclude or ())
     chips = [_health_chip(SUBSYSTEM_LABELS_COMPACT[key], short, tone, title=tip, ring=ring, compact=True)
-             for key, _full, short, tone, ring, tip in _subsystem_health(state, preflight)]
+             for key, _full, short, tone, ring, tip in _subsystem_health(state, preflight)
+             if key not in exclude_keys]
     return '<div class="health-chips topbar-health">' + "".join(chips) + "</div>"
+
+
+def subsystem_chip_state(key, state=None, preflight=None):
+    """One subsystem's row from _subsystem_health, as plain data (not HTML) -
+    app.py renders the AI and Policy topbar chips as real gr.Buttons (AI opens
+    Settings, Policy navigates to Compliance Check) instead of inert HTML, and
+    a Button needs a label string + a tone to pick a CSS class, not an HTML
+    fragment. The "○"/"●" prefix mirrors the ring/filled dot the other (HTML)
+    chips use, so the meaning ("configured" vs "observed this run") isn't lost
+    just because these two chips are a different component type."""
+    state = state or {}
+    label = SUBSYSTEM_LABELS_COMPACT[key]
+    for row_key, _full, short, tone, ring, tip in _subsystem_health(state, preflight):
+        if row_key == key:
+            dot = "○" if ring else "●"
+            return f"{dot} {label} {short}", tone, tip
+    return f"○ {label} —", "idle", ""
 
 
 def _priority_status_line(tally, final):
@@ -1097,6 +1223,229 @@ def dashboard_html(state=None, running=False):
     # then the status line (the next click). Empty string when a run isn't done.
     return banner + verdict + _kpi_tiles_html(state) + status_line
 
+# ------------------------------------------------------- self-improvement page
+
+EVAL_RUN_PLACEHOLDER = (
+    f'<div class="empty-state"><div class="empty-icon">{icon_html("shield", size=30)}</div>'
+    '<div class="subdued-text">No evals have been run yet this session - click '
+    '<b>Run Evals</b> above to score this app\'s own retrieval accuracy and reasoning '
+    'quality against a fixed set of known-answer test cases.</div></div>'
+)
+
+
+def self_improvement_primer_html():
+    """Always-visible explainer, same treatment as framework_primer_html - a
+    first-timer needs this in plain sight, not behind a hover tooltip, since
+    demos happen on a projector where nobody can hover."""
+    return (
+        '<div class="primer">'
+        '<b>🎓 What is Evaluation, and why does this page exist?</b> Every AI agent above can be '
+        'wrong, or give a different answer to the same question on different runs. '
+        '<b>Evaluation is not optional for an agentic AI system</b> - without a fixed, repeatable '
+        'test suite, there is no way to catch a regression from a prompt tweak, a model swap, or a '
+        'retrieval change before a user does. This page runs that evaluation automatically, '
+        f'using {glossary_term("Golden case", "fixed, known-answer test cases")} instead of '
+        'trusting the agents\' output on faith - the same idea as a test suite catching a code '
+        'regression. For a security tool specifically, a wrong compliance-control match or a '
+        'hallucinated CVE has real consequences, so measuring it matters more than in most software.'
+        '</div>'
+    )
+
+
+def _eval_tile(value_html, label, caption, color):
+    return (
+        f'<div style="flex:1; min-width:150px; text-align:center; padding:14px 10px; '
+        f'border-radius:12px; background:{color}12; border:1px solid {color}55;">'
+        f'<div style="font-size:26px; font-weight:750; color:{color};">{value_html}</div>'
+        f'<div style="font-size:11px; letter-spacing:0.05em; color:{color}; text-transform:uppercase; '
+        f'font-weight:600;">{label}</div>'
+        f'<div class="subdued-text" style="font-size:11px; margin-top:6px; line-height:1.4;">{caption}</div>'
+        '</div>'
+    )
+
+
+def eval_score_tiles_html(record):
+    """The headline numbers, each with a plain-English 'why this matters here'
+    caption rather than a bare metric name - so a reader who's never heard of
+    precision/recall can still act on the score."""
+    if not record:
+        return EVAL_RUN_PLACEHOLDER
+    retrieval = record["retrieval"]
+    reasoning = record["reasoning"]
+
+    precision_pct = round(retrieval["precision_at_1"] * 100)
+    recall_pct = round(retrieval["recall_at_3"] * 100)
+    precision_color = OK_GREEN if precision_pct >= 70 else WARN_AMBER
+    recall_color = OK_GREEN if recall_pct >= 70 else WARN_AMBER
+
+    tiles = [
+        _eval_tile(
+            f'{precision_pct}%', glossary_term("Precision@1"),
+            "Low precision means Policy Checker is pointing you at the wrong compliance control - "
+            "you'd waste time gathering evidence for something that isn't actually the gap. "
+            f'(mode: <code>{retrieval["embedding_mode"]}</code>)',
+            precision_color,
+        ),
+        _eval_tile(
+            f'{recall_pct}%', glossary_term("Recall@3"),
+            "A softer check: was the right control anywhere in the top 3 matches shown, even if "
+            "not first.",
+            recall_color,
+        ),
+    ]
+
+    if reasoning["reasoning_mode"] == "mock":
+        tiles.append(_eval_tile(
+            "n/a", "Reasoning Quality",
+            "No API key configured this run, so there's no live model output for a judge to "
+            f'grade - {glossary_term("LLM-as-a-judge", "LLM-as-a-judge")} scoring needs a real '
+            "answer to assess. Configure a key in Settings and re-run to measure this.",
+            IDLE_GREY,
+        ))
+    else:
+        faith = reasoning["faithfulness_mean"]
+        faith_color = OK_GREEN if faith >= 4 else WARN_AMBER
+        tiles.append(_eval_tile(
+            f'{faith:.1f} / 5', glossary_term("Faithfulness"),
+            "Low faithfulness means an agent's summary is stating things not actually present in "
+            f'the findings it was given - a hallucination risk. Judged by {reasoning["reasoning_mode"]}.',
+            faith_color,
+        ))
+
+    return f'<div style="display:flex; gap:10px; flex-wrap:wrap;">{"".join(tiles)}</div>'
+
+
+def _eval_retrieval_case_card(case):
+    color = OK_GREEN if case["top1_hit"] else (WARN_AMBER if case["any_hit"] else SEVERITY_COLORS["HIGH"])
+    badge = "TOP-1 MATCH" if case["top1_hit"] else ("IN TOP-3" if case["any_hit"] else "MISS")
+    body = (
+        f'<div><b>Finding:</b> {case["finding_text"]}</div>'
+        f'<div style="margin-top:4px;"><b>Expected control family:</b> {", ".join(case["expected"])}</div>'
+        f'<div style="margin-top:4px;"><b>Actually retrieved:</b> {", ".join(case["retrieved"]) or "(nothing above the match threshold)"}</div>'
+        f'<div class="subdued-text" style="margin-top:6px; font-size:11.5px;">{case["note"]}</div>'
+    )
+    return _card_html("🎯", "Retrieval case", badge, color, body)
+
+
+def _eval_reasoning_case_card(case):
+    faith = case["faithfulness_mean"]
+    is_mock = case["reasoning_mode"] == "mock"
+    # In mock mode, faithfulness_mean is a hardcoded neutral placeholder (no
+    # live model ever judged the summary) - showing it as "3.0/5" would read
+    # as a real score. Label it plainly instead, matching how the top-level
+    # tile and run-history table already report "n/a" for this case.
+    badge = "not judged (mock)" if is_mock else f'{faith:.1f}/5 faithfulness'
+    color = IDLE_GREY if is_mock else (OK_GREEN if faith >= 4 else WARN_AMBER)
+    consistency_note = (
+        "not applicable - no live model configured, so nothing was actually judged this run"
+        if is_mock else
+        ("perfectly consistent across repeats" if case["faithfulness_stddev"] == 0
+         else f'varied by ±{case["faithfulness_stddev"]:.1f} across repeats - {glossary_term("Consistency", "see why this matters")}')
+    )
+    body = (
+        f'<div><b>Rubric:</b> {case["rubric"]}</div>'
+        f'<div style="margin-top:6px;"><b>Sample summary graded:</b> {case["sample_summary"]}</div>'
+        f'<div style="margin-top:6px;"><b>Judge\'s reasoning:</b> {case["judge_reason"]}</div>'
+        f'<div class="subdued-text" style="margin-top:6px; font-size:11.5px;">{consistency_note}</div>'
+    )
+    return _card_html("⚖️", case["name"].replace("_", " ").title(),
+                       badge, color, body)
+
+
+def eval_case_cards_html(record):
+    """Per-case drill-down so a reader can verify the grading themselves
+    instead of trusting a bare number - same transparency instinct as showing
+    raw findings before an LLM's narrative elsewhere in this app."""
+    if not record:
+        return ""
+    retrieval_cards = [_eval_retrieval_case_card(c) for c in record["retrieval"]["cases"]]
+    reasoning_cards = [_eval_reasoning_case_card(c) for c in record["reasoning"]["cases"]]
+    return (
+        '<div style="margin-top:20px;"><h4>Retrieval cases</h4>'
+        f'{"".join(retrieval_cards)}</div>'
+        '<div style="margin-top:20px;"><h4>Reasoning quality cases</h4>'
+        f'{"".join(reasoning_cards)}</div>'
+    )
+
+
+def deploy_key_hint_html(is_deployed, provider_configured):
+    """Soft, dismissible-in-spirit nudge shown only on a deployed instance
+    (RENDER env var present) when nobody has configured an LLM key yet this
+    session. Deliberately NOT shown for local runs (a dev machine has its own
+    env-var/BYOK story already) and deliberately soft wording, not a blocking
+    banner - this app is designed to run meaningfully with zero keys (mock
+    reasoning + local/TF-IDF retrieval), so this should read as a tip to get
+    the full live experience, not a requirement."""
+    if not is_deployed or provider_configured:
+        return ""
+    return (
+        '<div style="display:flex; align-items:center; gap:10px; padding:8px 14px; '
+        f'border-radius:8px; background:{ACCENT}12; border:1px solid {ACCENT}55; margin:0 0 12px 0;">'
+        f'<span style="font-size:15px;">💡</span>'
+        '<div style="font-size:12.5px;">Running without a key right now - reasoning is on the '
+        'deterministic mock path. Paste an <b>OpenRouter</b> key in <b>Configure Models</b> (top right) '
+        'for live AI reasoning and full semantic policy search.</div>'
+        '</div>'
+    )
+
+
+def eval_storage_status_html(storage_mode):
+    """Prominent, always-visible banner on whether eval run history is
+    genuinely persistent (Supabase) or will be lost on the next restart/
+    redeploy (local file). Deliberately placed near the Run Evals button,
+    not buried under the results below - this is a property of the current
+    deployment's configuration, not of any single run, so it should be
+    visible before a reviewer even clicks anything."""
+    is_live = storage_mode == "supabase-live"
+    color = OK_GREEN if is_live else WARN_AMBER
+    icon = "🗄️" if is_live else "💾"
+    label = "Persistent history - Supabase connected" if is_live else "Session-only history - no Supabase configured"
+    detail = (
+        "Run history is stored in Supabase and will survive a server restart or redeploy."
+        if is_live else
+        "SUPABASE_URL / SUPABASE_SECRET_KEY aren't configured (or Supabase couldn't be reached), "
+        "so history is being kept in a local file instead - it will NOT survive a redeploy."
+    )
+    return (
+        f'<div style="display:flex; align-items:center; gap:10px; padding:9px 14px; '
+        f'border-radius:8px; background:{color}12; border:1px solid {color}55; margin:10px 0;">'
+        f'<span style="font-size:16px;">{icon}</span>'
+        f'<div><div style="font-weight:700; font-size:12.5px; color:{color};">{label}</div>'
+        f'<div class="subdued-text" style="font-size:11.5px; margin-top:2px;">{detail}</div></div>'
+        '</div>'
+    )
+
+
+def eval_history_html(history, storage_mode):
+    """Run-history table. The storage_mode banner itself lives at the top of
+    the page (eval_storage_status_html) - not repeated here to avoid saying
+    the same thing twice on one page."""
+    if not history:
+        return '<div class="subdued-text" style="margin-top:4px;">No runs recorded yet.</div>'
+
+    rows = ""
+    for rec in history:
+        ts = rec["timestamp"][:19].replace("T", " ")
+        precision = round(rec["retrieval"]["precision_at_1"] * 100)
+        mode = rec["reasoning"]["reasoning_mode"]
+        faith = ("n/a" if mode == "mock" else f'{rec["reasoning"]["faithfulness_mean"]:.1f}/5')
+        rows += (
+            f'<tr><td style="padding:6px 10px;">{ts} UTC</td>'
+            f'<td style="padding:6px 10px;">{precision}%</td>'
+            f'<td style="padding:6px 10px;">{faith}</td>'
+            f'<td style="padding:6px 10px;"><code>{mode}</code></td></tr>'
+        )
+    table = (
+        '<div style="overflow-x:auto; margin-top:12px;">'
+        '<table style="width:100%; border-collapse:collapse; font-size:12.5px;">'
+        '<thead><tr style="text-align:left; border-bottom:1px solid var(--border-color-primary);">'
+        '<th style="padding:6px 10px;">Run (UTC)</th><th style="padding:6px 10px;">Retrieval Precision@1</th>'
+        '<th style="padding:6px 10px;">Reasoning Faithfulness</th><th style="padding:6px 10px;">Reasoning mode</th>'
+        '</tr></thead><tbody>'
+        f'{rows}</tbody></table></div>'
+    )
+    return table
+
 # -------------------------------------------------------------------- theme
 
 
@@ -1131,7 +1480,37 @@ CUSTOM_CSS = """
 #app-topbar .prose { margin: 0 !important; }
 #app-topbar .prose > * { margin: 0 !important; }
 #app-topbar .topbar-health { margin: 0 !important; }
+/* AI/Scan/CVE/Policy need to read as ONE chip cluster, not four separately-
+   spaced components - #chip-cluster is a nested Row (see app.py) so its three
+   children (ai_chip_btn, the Scan+CVE HTML, policy_chip_btn) get their own
+   tight gap instead of Gradio's normal (much larger) inter-component spacing,
+   and none of them stretch to fill space, which is what left visible gaps
+   between the chip groups. */
+#chip-cluster {
+    flex: 0 1 auto !important;
+    flex-wrap: nowrap !important;
+    gap: 6px !important;
+    align-items: center;
+}
+/* Gradio's own block wrapper sets width:100% internally - flex:0 0 auto alone
+   doesn't override that (flex-basis:auto still resolves through an explicit
+   width), so it claimed the whole row and wrapped the other two chips onto
+   separate lines. width:auto is the actual fix; flex is kept for intent. */
+#chip-cluster > .block { flex: 0 0 auto !important; width: auto !important; }
+/* #chip-cluster itself is a Gradio .row, not .block - the rule above (and
+   #app-topbar > .block) never touches it, so it still inherits Gradio's
+   default .row width:100%, which wins over its own flex-grow:0 and forces
+   it (and everything after it) onto its own full-width line. */
+#app-topbar > #chip-cluster { width: auto !important; }
 .brand-title { font-size: 17px; font-weight: 700; letter-spacing: -0.01em; }
+/* The shield SVG shares the brand-title's left edge but Gradio's base
+   stylesheet sets `svg { display: block }` globally, which drops it onto
+   its own line despite the icon's own inline vertical-align. Scope it back
+   to inline here rather than fighting the global rule everywhere else.
+   Tinted with the theme's own primary hue (cyan) rather than inventing a
+   new accent color - this app has no other decorative color, only the
+   semantic OK_GREEN/WARN_AMBER status colors, which this must not collide with. */
+.brand-title svg { display: inline; color: var(--primary-600); }
 .brand-sub { font-size: 11.5px; margin-top: 1px; }
 /* Version sits with the brand but must never compete with it - small, muted,
    monospace so digits don't reflow as it grows (v0.9 -> v0.10). */
@@ -1228,6 +1607,12 @@ CUSTOM_CSS = """
     transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
 }
 .nav-btn:hover { border-color: #06b6d488; transform: translateX(2px); }
+
+/* Admin/reviewer-facing nav items (currently just Evaluations) get a purple
+   left-edge stripe so they read as a distinct group from the regular-user
+   pages above, without implying real access control this app doesn't have. */
+.nav-btn-admin { border-left: 3px solid #a855f7 !important; }
+.nav-btn-admin:hover { border-color: #a855f788; }
 
 /* ---------- overview agent cards ----------
    Gradio's Row is a wrapping flexbox, and `equal_height` only equalises
@@ -1327,6 +1712,45 @@ CUSTOM_CSS = """
     flex-wrap: wrap;
 }
 @media (max-width: 1000px) { .topbar-health { justify-content: flex-start; } }
+
+/* AI and Policy chips are real gr.Buttons (not HTML like Scan/CVE), so they
+   can navigate/open Settings on click. At REST they're styled to look
+   IDENTICAL to their HTML siblings (.chip.compact) - same border-only tone,
+   no fill, neutral label text - so nothing marks them as "different" just
+   sitting there; a permanent color/fill difference isn't a real signal
+   anyway once every chip happens to share the same tone. Clickability is
+   revealed ONLY on hover (tone tint + a small lift), the same restrained
+   language .nav-btn:hover already uses elsewhere in this app. !important
+   overrides Gradio's own button sizing/background defaults. */
+.chip-btn {
+    font-size: 11px !important; font-weight: 600 !important;
+    padding: 3px 9px !important; min-height: unset !important; height: auto !important;
+    min-width: unset !important; width: auto !important;
+    border-radius: 999px !important; box-shadow: none !important;
+    white-space: nowrap; background: transparent !important;
+    color: var(--body-text-color) !important;
+    /* Gradio's secondary button has border-width:0 by default - setting only
+       border-color (as this rule used to) is invisible without also forcing
+       a real width/style, which is why these looked borderless next to
+       Scan/CVE's 1px HTML-chip border. */
+    border-width: 1px !important; border-style: solid !important;
+    transition: background-color 0.15s ease, transform 0.1s ease;
+}
+.chip-btn.ok   { border-color: #16a34a55 !important; }
+.chip-btn.warn { border-color: #f59e0b88 !important; }
+.chip-btn.idle { border-color: #94a3b855 !important; }
+.chip-btn.ok:hover   { background: #16a34a12 !important; transform: translateY(-1px); }
+.chip-btn.warn:hover { background: #f59e0b12 !important; transform: translateY(-1px); }
+.chip-btn.idle:hover { background: #94a3b812 !important; transform: translateY(-1px); }
+
+/* Settings sidebar's Provider/Embedding Provider radios rendered noticeably
+   roomier than the rest of this app's compact controls (Gradio's own default:
+   ~6px/12px padding, 14px font). Tightened here via a plain `label` tag
+   selector scoped under our own .compact-radio class - robust across Gradio
+   versions, since it doesn't depend on Gradio's internal svelte-* hash
+   classes (confirmed live: those exist but aren't a stable target). */
+.compact-radio label { padding: 3px 10px !important; font-size: 12px !important; }
+.compact-radio .wrap { gap: 4px !important; }
 
 /* ---------- pipeline tracker ---------- */
 .pl-wrap {
@@ -1492,6 +1916,12 @@ a.gloss:hover, abbr.gloss:hover { border-bottom-style: solid; color: #0e7490; }
 /* ---------- empty states ---------- */
 .empty-state { text-align: center; padding: 28px 12px; }
 .empty-icon { font-size: 30px; margin-bottom: 6px; opacity: 0.5; }
+/* Gradio's base stylesheet sets `svg { display: block }` globally, which
+   defeats .empty-state's text-align:center (that only centers inline
+   content) - the shield renders as its own left-aligned block instead of
+   centered, floating oddly in the empty space. Same root cause as the
+   earlier icon-zap/icon-folder tab bug. */
+.empty-icon svg { display: inline-block; }
 
 /* ---------- "what can I upload?" help panel ---------- */
 .fh-grid {

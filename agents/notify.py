@@ -1,30 +1,25 @@
 """
 Notification / Action Stage
 ----------------------------
-The pipeline's terminal action: dispatches an alert (Slack + email) when a
-finding at or above the configured severity threshold is present. This is
-deliberately NOT a reasoning agent - it does fixed routing/formatting over
-data the other agents already produced, so it never calls `llm.reason()` and
-is drawn in the UI as a distinct "action" stage rather than a 6th agent.
+The pipeline's terminal action: dispatches a Slack alert when a finding at or
+above the configured severity threshold is present. This is deliberately NOT
+a reasoning agent - it does fixed routing/formatting over data the other
+agents already produced, so it never calls `llm.reason()` and is drawn in the
+UI as a distinct "action" stage rather than a 6th agent.
 
-BYOK: `configure(...)` lets the UI set a Slack webhook, Gmail SMTP
-credentials, a recipient list, and which severities trigger an alert, mirroring
-the override/env-fallback pattern in `agents/llm.py`. With nothing configured,
-`run()` still completes and reports a labeled "skipped" mode - the pipeline
-never hard-fails because notifications aren't set up.
+BYOK: `configure(...)` lets the UI set a Slack webhook and which severities
+trigger an alert, mirroring the override/env-fallback pattern in
+`agents/llm.py`. With nothing configured, `run()` still completes and reports
+a labeled "skipped" mode - the pipeline never hard-fails because
+notifications aren't set up.
 """
 
 import os
-import smtplib
-from email.message import EmailMessage
 
 from dotenv import load_dotenv
 load_dotenv()
 
 SLACK_WEBHOOK_URL = os.environ.get("SLACK_WEBHOOK_URL")
-SMTP_USER = os.environ.get("SMTP_USER")
-SMTP_PASS = os.environ.get("SMTP_PASS")
-ALERT_EMAIL_TO = os.environ.get("ALERT_EMAIL_TO")  # comma-separated
 NOTIFY_SEVERITIES = os.environ.get("NOTIFY_SEVERITIES")  # comma-separated, e.g. "CRITICAL,HIGH"
 
 SEVERITY_ORDER = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
@@ -32,9 +27,6 @@ SEVERITY_ORDER = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
 # BYOK overrides set via configure(); None/[] means "fall back to env"
 _RUNTIME = {
     "slack_webhook": None,
-    "smtp_user": None,
-    "smtp_pass": None,
-    "recipients": [],
     "severities": None,
 }
 
@@ -57,32 +49,20 @@ def parse_list(value):
     return out
 
 
-def configure(slack_webhook=None, smtp_user=None, smtp_pass=None, recipients=None, severities=None):
+def configure(slack_webhook=None, severities=None):
     """
-    Set BYOK overrides from the UI. `recipients` accepts a list or a
-    comma/newline-separated string. `severities` accepts a list/set or a
+    Set BYOK overrides from the UI. `severities` accepts a list/set or a
     comma-separated string of severity names; normalized to uppercase.
     Passing an empty/None value for a field clears that override (falls back
     to the matching env var).
     """
     _RUNTIME["slack_webhook"] = slack_webhook or None
-    _RUNTIME["smtp_user"] = smtp_user or None
-    _RUNTIME["smtp_pass"] = smtp_pass or None
-    _RUNTIME["recipients"] = parse_list(recipients)
     sev_list = parse_list(severities)
     _RUNTIME["severities"] = {s.upper() for s in sev_list} if sev_list else None
 
 
 def _active_slack_webhook():
     return _RUNTIME["slack_webhook"] or SLACK_WEBHOOK_URL
-
-
-def _active_smtp_creds():
-    return _RUNTIME["smtp_user"] or SMTP_USER, _RUNTIME["smtp_pass"] or SMTP_PASS
-
-
-def _active_recipients():
-    return _RUNTIME["recipients"] or parse_list(ALERT_EMAIL_TO)
 
 
 def _active_severities():
@@ -129,17 +109,6 @@ def _send_slack(webhook, text):
     resp.raise_for_status()
 
 
-def _send_email(user, password, recipients, subject, body):
-    msg = EmailMessage()
-    msg["Subject"] = subject
-    msg["From"] = user
-    msg["To"] = ", ".join(recipients)
-    msg.set_content(body)
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10) as server:
-        server.login(user, password)
-        server.send_message(msg)
-
-
 def run(state):
     log_findings = state["log_monitor"]["findings"]
     vuln_findings = state["vuln_scanner"]["findings"]
@@ -159,52 +128,32 @@ def run(state):
             "mode": "no-alert",
             "channels": [],
             "sent_count": 0,
-            "recipients_count": 0,
             "summary": f"No findings at or above the configured severities ({', '.join(base['severities'])}) - nothing to dispatch.",
         }
 
     worst = findings[0]["severity"]
     webhook = _active_slack_webhook()
-    smtp_user, smtp_pass = _active_smtp_creds()
-    recipients = _active_recipients()
 
-    channels = []
     if not webhook:
-        channels.append({"channel": "slack", "status": "not-configured", "detail": "No Slack webhook URL configured"})
-    if not (smtp_user and smtp_pass and recipients):
-        channels.append({"channel": "email", "status": "not-configured", "detail": "Gmail credentials or recipients not configured"})
-
-    if not webhook and not (smtp_user and smtp_pass and recipients):
         return {
             **base,
             "mode": "skipped",
-            "channels": channels,
+            "channels": [{"channel": "slack", "status": "not-configured", "detail": "No Slack webhook URL configured"}],
             "sent_count": 0,
-            "recipients_count": 0,
             "summary": f"{len(findings)} finding(s) at {worst}+ would trigger an alert, "
-                       f"but no Slack webhook or Gmail credentials are configured - skipped.",
+                       f"but no Slack webhook is configured - skipped.",
         }
 
     text = _format_message(findings, plan, worst)
+    channels = []
     sent_count = 0
 
-    if webhook:
-        try:
-            _send_slack(webhook, text)
-            channels.append({"channel": "slack", "status": "sent", "detail": "Delivered to configured webhook"})
-            sent_count += 1
-        except Exception as e:
-            channels.append({"channel": "slack", "status": "failed", "detail": str(e)})
-
-    if smtp_user and smtp_pass and recipients:
-        try:
-            _send_email(smtp_user, smtp_pass, recipients,
-                        subject=f"[CyberSec AI Agent] {worst} risk detected ({len(findings)} finding(s))",
-                        body=text)
-            channels.append({"channel": "email", "status": "sent", "detail": f"Delivered to {len(recipients)} recipient(s)"})
-            sent_count += 1
-        except Exception as e:
-            channels.append({"channel": "email", "status": "failed", "detail": str(e)})
+    try:
+        _send_slack(webhook, text)
+        channels.append({"channel": "slack", "status": "sent", "detail": "Delivered to configured webhook"})
+        sent_count += 1
+    except Exception as e:
+        channels.append({"channel": "slack", "status": "failed", "detail": str(e)})
 
     mode = "sent" if sent_count else "offline-fallback"
     summary = (
@@ -218,6 +167,5 @@ def run(state):
         "mode": mode,
         "channels": channels,
         "sent_count": sent_count,
-        "recipients_count": len(recipients),
         "summary": summary,
     }

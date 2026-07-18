@@ -64,6 +64,22 @@ def configure(provider=None, api_key=None, model=None):
     _RUNTIME["model"] = model or None
 
 
+def current_provider():
+    """Which provider a reason() call would actually use right now (BYOK
+    override, else the first env var configured, else None if nothing is
+    configured - matching reason()'s own detection order exactly)."""
+    if _RUNTIME["provider"]:
+        return _RUNTIME["provider"]
+    for provider, key in (
+        ("anthropic", ANTHROPIC_API_KEY),
+        ("openai", OPENAI_API_KEY),
+        ("openrouter", OPENROUTER_API_KEY),
+    ):
+        if key:
+            return provider
+    return None
+
+
 def list_openrouter_models(force_refresh=False):
     """
     Fetch the live OpenRouter model catalog (public endpoint, no key needed).
@@ -173,7 +189,7 @@ _CALLERS = {
 }
 
 
-def reason(system_prompt: str, user_prompt: str, mock_fn=None):
+def reason(system_prompt: str, user_prompt: str, mock_fn=None, model_override: str = None):
     """
     Returns (text, mode) where mode is 'live-anthropic', 'live-openai',
     'live-openrouter', or 'mock'.
@@ -181,6 +197,10 @@ def reason(system_prompt: str, user_prompt: str, mock_fn=None):
     deterministic, structured fallback answer specific to that agent's task.
     On a 'mock' result, call get_last_fallback_reason() for a human-readable
     reason why (no key configured, or the specific error the API returned).
+    `model_override`, if given, is used in place of the configured/default
+    model for this call only (no mutation of _RUNTIME) - lets a caller (e.g.
+    the Model Council) get a second, genuinely different model's opinion
+    under the same provider/key without touching global BYOK state.
     """
     global MODEL_MODE, LAST_FALLBACK_REASON
     LAST_FALLBACK_REASON = None
@@ -195,7 +215,7 @@ def reason(system_prompt: str, user_prompt: str, mock_fn=None):
             "openai": OPENAI_API_KEY,
             "openrouter": OPENROUTER_API_KEY,
         }.get(provider)
-        model = _RUNTIME["model"] or DEFAULT_MODELS.get(provider)
+        model = model_override or _RUNTIME["model"] or DEFAULT_MODELS.get(provider)
         if api_key:
             try:
                 text = _CALLERS[provider](system_prompt, user_prompt, api_key, model)
@@ -221,12 +241,13 @@ def reason(system_prompt: str, user_prompt: str, mock_fn=None):
         if not key:
             continue
         attempted = True
+        model = model_override or DEFAULT_MODELS[provider]
         try:
-            text = _CALLERS[provider](system_prompt, user_prompt, key, DEFAULT_MODELS[provider])
+            text = _CALLERS[provider](system_prompt, user_prompt, key, model)
             MODEL_MODE = f"live-{provider}"
             return text, MODEL_MODE
         except Exception as e:
-            last_error = f"{provider} ({DEFAULT_MODELS[provider]}) call failed: {e}"
+            last_error = f"{provider} ({model}) call failed: {e}"
             continue  # fall through to next provider
 
     # 3. Mock fallback.

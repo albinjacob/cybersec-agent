@@ -10,3 +10,6 @@ output/state.json
 
 # Trivy binary downloaded by scripts/render_build.sh - not committed
 bin/
+
+# Local eval run history - only used when Supabase isn't configured
+evals/results/history.jsonl

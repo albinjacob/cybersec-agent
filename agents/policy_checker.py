@@ -35,9 +35,21 @@ from . import embeddings
 from .llm import reason, get_last_fallback_reason
 
 NIST_CATALOG_PATH = "data/nist_800_53_catalog.json"
-CACHE_META_PATH = "data/policy_index_meta.json"
-CACHE_VECTORS_PATH = "data/policy_index_vectors.npy"
 DEFAULT_POLICY_PATH = "data/policy_excerpt.md"
+
+# One cache pair PER embedding provider, not one shared pair - a dev machine
+# (typically "local", no key) and a deployment (typically "openrouter", one
+# shared key) are expected to run with genuinely different active providers
+# at the same time. A single shared cache file could only ever match one of
+# them, permanently flagging the other as "rebuild needed". Keying the
+# filename by provider lets both live in the repo simultaneously, each valid
+# for its own environment.
+CACHE_META_PATH_TMPL = "data/policy_index_meta.{provider}.json"
+CACHE_VECTORS_PATH_TMPL = "data/policy_index_vectors.{provider}.npy"
+
+
+def _cache_paths(provider):
+    return CACHE_META_PATH_TMPL.format(provider=provider), CACHE_VECTORS_PATH_TMPL.format(provider=provider)
 
 # Real embedding cosine similarities run higher than TF-IDF's for genuinely
 # related text, so the "is this a real match" bar is raised accordingly.
@@ -146,9 +158,9 @@ def _corpus_hash(chunks):
 def rebuild_index():
     """Re-embeds the full policy corpus with whatever embedding
     provider/model is currently configured (agents/embeddings.py) and
-    writes the result to disk. Deliberately manual/rare - triggered by the
-    UI's Rebuild Index button, never called automatically during a
-    pipeline run."""
+    writes the result to its provider-specific cache file on disk.
+    Deliberately manual/rare - triggered by the UI's Rebuild Index button,
+    never called automatically during a pipeline run."""
     chunks = build_all_chunks()
     texts = [c["text"] for c in chunks]
     vectors, provider, model = embeddings.embed(texts)
@@ -161,30 +173,36 @@ def rebuild_index():
         "chunk_count": len(chunks),
         "chunks": [{"id": c["id"], "source": c["source"], "title": c["title"], "text": c["text"]} for c in chunks],
     }
-    with open(CACHE_META_PATH, "w", encoding="utf-8") as f:
+    meta_path, vectors_path = _cache_paths(provider)
+    with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(meta, f, indent=2)
-    np.save(CACHE_VECTORS_PATH, np.array(vectors, dtype=np.float32))
+    np.save(vectors_path, np.array(vectors, dtype=np.float32))
     return meta
 
 
-def _load_cached_index():
-    """Returns (meta, vectors) or (None, None) if missing/unreadable."""
-    if not (os.path.exists(CACHE_META_PATH) and os.path.exists(CACHE_VECTORS_PATH)):
+def _load_cached_index(provider):
+    """Returns (meta, vectors) for THIS provider's cache file, or
+    (None, None) if missing/unreadable - each provider has its own cache
+    pair, so a dev machine on "local" and a deployment on "openrouter" each
+    read their own valid, never-mismatched file."""
+    meta_path, vectors_path = _cache_paths(provider)
+    if not (os.path.exists(meta_path) and os.path.exists(vectors_path)):
         return None, None
     try:
-        with open(CACHE_META_PATH, encoding="utf-8") as f:
+        with open(meta_path, encoding="utf-8") as f:
             meta = json.load(f)
-        vectors = np.load(CACHE_VECTORS_PATH)
+        vectors = np.load(vectors_path)
         return meta, vectors
     except Exception:
         return None, None
 
 
 def index_status():
-    """For the UI's Policy Index admin panel: what's cached right now, and
-    whether it's stale/incompatible with the currently configured model."""
-    meta, _ = _load_cached_index()
+    """For the UI's Policy Index admin panel: what's cached right now for
+    the CURRENTLY configured provider, and whether it's stale/incompatible
+    with the currently configured model."""
     current_provider, current_model = embeddings.current_provider_and_model()
+    meta, _ = _load_cached_index(current_provider)
     if meta is None:
         return {
             "exists": False,
@@ -199,7 +217,10 @@ def index_status():
         "embedding_model": meta["embedding_model"],
         "built_at": meta["built_at"],
         "corpus_stale": meta["corpus_hash"] != current_hash,
-        "model_mismatch": (meta["embedding_provider"], meta["embedding_model"]) != (current_provider, current_model),
+        # Provider can never mismatch now (the cache file IS the provider's own),
+        # but the model name within that provider still can (e.g. a future model
+        # upgrade for the same provider) - keep the check for that case.
+        "model_mismatch": meta["embedding_model"] != current_model,
         "current_provider": current_provider,
         "current_model": current_model,
     }
@@ -230,10 +251,10 @@ def _local_embeddings_available():
 
 def _get_index(policy_path):
     """Returns (index, embedding_mode, fallback_reason)."""
-    meta, vectors = _load_cached_index()
+    current_provider, current_model = embeddings.current_provider_and_model()
+    meta, vectors = _load_cached_index(current_provider)
     if meta is not None and vectors is not None:
-        current_provider, current_model = embeddings.current_provider_and_model()
-        if (meta["embedding_provider"], meta["embedding_model"]) == (current_provider, current_model):
+        if meta["embedding_model"] == current_model:
             if current_provider == "local" and not _local_embeddings_available():
                 return (
                     PolicyIndex(load_policy_chunks(policy_path)), "tfidf-fallback",
@@ -247,11 +268,14 @@ def _get_index(policy_path):
                 extra = _build_excerpt_chunks(policy_path, source="user_policy", id_prefix="user")
             return EmbeddingPolicyIndex(meta, vectors, extra_chunks=extra), "embeddings", None
         reason_text = (
-            f"Cached index was built with {meta['embedding_provider']}/{meta['embedding_model']}, "
-            f"but {current_provider}/{current_model} is configured now - rebuild the index to use it."
+            f"Cached {current_provider} index was built with model {meta['embedding_model']}, "
+            f"but {current_model} is configured now - rebuild the index to use it."
         )
     else:
-        reason_text = "No embedding index built yet - using keyword-based matching over the small excerpt instead."
+        reason_text = (
+            f"No embedding index built yet for provider '{current_provider}' - using keyword-based "
+            "matching over the small excerpt instead."
+        )
 
     return PolicyIndex(load_policy_chunks(policy_path)), "tfidf-fallback", reason_text
 
@@ -304,6 +328,12 @@ def run(policy_path: str, all_findings):
     )
     user_prompt = f"Mapped gaps:\n{gaps}"
     summary, mode = reason(system_prompt, user_prompt, mock_fn=lambda: _mock_summary(gaps))
+    # Only meaningful when embeddings actually ran - a tfidf-fallback run didn't
+    # use this provider at all, so recording it there would misrepresent what
+    # actually happened this request.
+    embedding_provider, embedding_model = (
+        embeddings.current_provider_and_model() if embedding_mode == "embeddings" else (None, None)
+    )
     return {
         "agent": "policy_checker",
         "gaps": gaps,
@@ -312,4 +342,6 @@ def run(policy_path: str, all_findings):
         "reasoning_fallback_reason": get_last_fallback_reason() if mode == "mock" else None,
         "embedding_mode": embedding_mode,
         "embedding_fallback_reason": embedding_fallback_reason,
+        "embedding_provider": embedding_provider,
+        "embedding_model": embedding_model,
     }
