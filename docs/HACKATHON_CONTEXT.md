@@ -64,9 +64,9 @@ integrations the topic ultimately wants:
   corpora.
 - **Notifications** — since built: `agents/notify.py` is a terminal LangGraph
   node (not a 6th reasoning agent) that dispatches a Slack webhook message
-  and/or Gmail SMTP email when a finding at or above a configured severity
-  is present, with a labeled `skipped` fallback when nothing is configured.
-  JIRA integration remains out of scope.
+  when a finding at or above a configured severity is present, with a
+  labeled `skipped` fallback when nothing is configured. Email/JIRA
+  integration remains out of scope.
 
 Every agent's output JSON carries a `reasoning_mode` field
 (`"mock"` / `"live-anthropic"` / `"live-openai"`) so it's always visible

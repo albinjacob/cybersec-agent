@@ -51,6 +51,50 @@ every stage's output into one markdown report.
 | **Policy Checker** | Maps gaps to NIST 800-53 / ISO / SOC2 controls via semantic RAG |
 | **Notify** *(action stage, not an LLM agent)* | Dispatches a Slack message / email when a finding meets the configured severity threshold |
 
+## Model Council + judge (CRITICAL findings only)
+
+For CRITICAL-severity findings specifically, Incident Response gets a second, independent
+model's opinion (a genuinely different model under whatever provider/key is configured) plus a
+third **judge** call that reconciles the two into one final recommendation and flags whether they
+agreed. Shown as a "🏛️ Model Council" block on the Incident Response page and in the markdown
+report. Needs a live key configured (BYOK) to run at all - with no key, it's skipped
+(`council mode: skipped-mock`), same as every other reasoning path in this app.
+
+## Evaluation Dashboard (self-improvement)
+
+Evaluation isn't optional for an agentic AI system - every LLM call can be wrong or inconsistent,
+and without a fixed, repeatable test suite there's no way to catch a regression from a prompt
+tweak, a model swap, or a retrieval change before a user does. A dedicated page (left nav:
+**Evaluations**) scores this app's own retrieval accuracy and reasoning quality against a fixed
+set of hand-written, known-answer test cases (`evals/golden_cases.py`) - click **Run Evals** to
+see it live:
+
+- **Retrieval Precision@1 / Recall@3** - deterministic, no LLM involved, always available: checks
+  whether Policy Checker's real semantic search retrieves the *correct* NIST 800-53 control family
+  for each golden finding.
+- **Reasoning Faithfulness** - an [LLM-as-a-judge](https://en.wikipedia.org/wiki/LLM-as-a-judge)
+  score (1-5) on whether an agent's summary only states facts present in its input, repeated 3x
+  per case to report a consistency signal alongside the mean. Needs a live key configured; with no
+  key it reports `mode: mock` rather than a fabricated score.
+
+Every score tile explains in plain English *why that metric matters here*, and every golden case
+can be expanded to see exactly what was retrieved/judged and why - built for someone with no prior
+evals background to read.
+
+**Run history** persists across sessions via a free-tier **Supabase** Postgres table when
+configured, falling back to a local file (this-session-only) otherwise:
+
+```sql
+create table eval_runs (
+    id bigint generated always as identity primary key,
+    created_at timestamptz not null default now(),
+    record jsonb not null
+);
+```
+
+Set `SUPABASE_URL` (the project URL) and `SUPABASE_SECRET_KEY` (the service_role-equivalent key) as env vars
+to enable it - both are optional; the dashboard works with local-only history if they're absent.
+
 ## Real integrations, with graceful fallback
 
 Every external integration is genuinely wired up **and** has an offline fallback so a live
@@ -64,7 +108,7 @@ path actually ran, so a judge can see at a glance what's live:
 | Vulnerability scan | Real **Trivy** (`trivy config` + `trivy fs --scanners vuln`) against its live DB | Static regex/dataset checks — `scan_mode: static-fallback` |
 | Threat intel | Live **NVD REST API v2.0** (public, no key) | Bundled `cve_dataset.json` — `local-fallback` |
 | Policy RAG | Real semantic embeddings over the **full NIST 800-53 catalog** (~1,014 controls, cached vectors) | TF-IDF over a condensed excerpt |
-| Notifications | Real **Slack webhook** + **Gmail SMTP** dispatch for findings at/above a configured severity | Labeled `skipped` — pipeline still completes with no channel configured |
+| Notifications | Real **Slack webhook** dispatch for findings at/above a configured severity | Labeled `skipped` — pipeline still completes with no channel configured |
 
 ## Bring Your Own Key (BYOK)
 
@@ -73,9 +117,9 @@ API-key field (Anthropic / OpenAI / OpenRouter) applied per session — paste yo
 run reasoning live and watch `reasoning_mode` flip to `live-anthropic`. Leave it blank and
 everything still runs on the offline paths above.
 
-The same Settings panel has a **Notifications** section (Slack webhook URL, Gmail address +
-app password, a recipient list, and which severities should trigger an alert). Nothing there is
-required — leave it blank and the Notify stage just reports `skipped` and the run still completes.
+The same Settings panel has a **Notifications** section (Slack webhook URL and which severities
+should trigger an alert). Nothing there is required — leave it blank and the Notify stage just
+reports `skipped` and the run still completes.
 
 ## Repo layout
 
@@ -107,9 +151,7 @@ cybersec-agent/
 - **Live LLM reasoning**: paste an API key in the UI (BYOK).
 - **NVD threat intel** works out of the box (public API, no key), falling back to the bundled
   dataset if unreachable.
-- **Notifications**: paste a Slack webhook URL and/or a Gmail address + [app
-  password](https://myaccount.google.com/apppasswords) (not your account password) in the UI, or
-  set `SLACK_WEBHOOK_URL`, `SMTP_USER`, `SMTP_PASS`, `ALERT_EMAIL_TO` (comma-separated) as env
-  vars. Optional `NOTIFY_SEVERITIES` (default `CRITICAL`) controls which severities trigger it.
+- **Notifications**: paste a Slack webhook URL in the UI, or set `SLACK_WEBHOOK_URL` as an env
+  var. Optional `NOTIFY_SEVERITIES` (default `CRITICAL`) controls which severities trigger it.
 
 For the full build narrative and design decisions, see [`docs/`](docs/).
