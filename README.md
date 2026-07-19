@@ -157,4 +157,6 @@ cybersec-agent/
   var. Optional `NOTIFY_SEVERITIES` (default `CRITICAL`) controls which severities trigger it.
 
 For hackathon context, see [`docs/BACKGROUND.md`](docs/BACKGROUND.md); for
-the reasoning behind the architecture, see [`docs/DECISIONS.md`](docs/DECISIONS.md).
+the reasoning behind the architecture, see [`docs/DECISIONS.md`](docs/DECISIONS.md);
+for a visual system diagram (as-built vs. roadmap), see
+[`docs/architecture.html`](docs/architecture.html).
