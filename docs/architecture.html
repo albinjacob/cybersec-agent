@@ -140,11 +140,11 @@ footer.crosscut{margin-top:16px;}
       <div class="panel-head"><h3>Data sources</h3></div>
       <div class="stack">
         <div class="box done"><h4>Sample auth log</h4><p>Bundled SSH brute-force + recon log the demo runs against.</p><div class="tags"><span class="tag">data/testing/quick_demo/sample_auth.log</span></div></div>
-        <div class="box done"><h4>Dockerfile + requirements.txt</h4><p>Intentionally vulnerable sample the scanner targets.</p><div class="tags"><span class="tag">data/</span></div></div>
+        <div class="box done"><h4>Dockerfile + requirements.txt</h4><p>Intentionally vulnerable sample the scanner targets.</p><div class="tags"><span class="tag">data/testing/quick_demo/</span></div></div>
         <div class="box done"><h4>User uploads</h4><p>Swap in your own log / Dockerfile / requirements file in the UI.</p></div>
         <div class="box done"><h4>NIST 800-53 catalog</h4><p>~1,014 controls, flattened and cached for retrieval.</p><div class="tags"><span class="tag">scripts/fetch_nist</span></div></div>
         <div class="box done"><h4>ISO / SOC2 excerpt</h4><p>Condensed policy text for the TF-IDF fallback path.</p></div>
-        <div class="box done"><h4>Local CVE dataset</h4><p>Offline fallback feed when NVD is unreachable.</p><div class="tags"><span class="tag">cve_dataset.json</span></div></div>
+        <div class="box done"><h4>Local CVE dataset</h4><p>Offline fallback feed when NVD is unreachable.</p><div class="tags"><span class="tag">data/knowledgebase/cve_dataset.json</span></div></div>
         <div class="box road"><h4>Streaming ingestion</h4><p>Tail live log sources (syslog, CloudTrail) instead of static files.</p></div>
         <div class="box road"><h4>SIEM forwarding in</h4><p>Pull findings context from Splunk / Sentinel directly.</p></div>
       </div>
@@ -169,11 +169,11 @@ footer.crosscut{margin-top:16px;}
           <div class="box done"><h4>Log Monitor</h4><p>Parses auth logs for brute-force / recon / port-scan signals.</p></div>
           <div class="box done"><h4>Threat Intel</h4><p>Correlates surfaced CVEs against a live feed.</p><div class="tags"><span class="tag">NVD API</span></div></div>
           <div class="box done"><h4>Vuln Scanner</h4><p>Scans Dockerfile + deps for misconfig and CVEs.</p><div class="tags"><span class="tag">Trivy</span></div></div>
-          <div class="box done"><h4>Incident Response</h4><p>Turns findings into a prioritized remediation plan.</p></div>
+          <div class="box done"><h4>Incident Response</h4><p>Turns findings into a prioritized remediation plan. CRITICAL findings also get a Model Council: a second independent model's opinion plus a judge verdict.</p><div class="tags"><span class="tag">agents/council.py</span></div></div>
           <div class="box done"><h4>Policy Checker</h4><p>Maps gaps to NIST/ISO/SOC2 controls via semantic RAG.</p></div>
           <div class="action-cell">
             <span class="arrow-lbl">⇥ terminal action, not a 6th agent</span>
-            <div class="box done"><h4>Notify</h4><p>Dispatches a Slack message / email when a finding meets the configured severity threshold.</p><div class="tags"><span class="tag">Slack webhook</span><span class="tag">Gmail SMTP</span></div></div>
+            <div class="box done"><h4>Notify</h4><p>Dispatches a Slack message when a finding meets the configured severity threshold.</p><div class="tags"><span class="tag">Slack webhook</span></div></div>
           </div>
         </div>
         <div class="note"><b>Honest framing:</b> this is a fixed, compiled DAG (LangGraph <code>StateGraph</code>) with deterministic edges, not a dynamic supervisor agent that decides its own routing at runtime.</div>
@@ -207,7 +207,7 @@ footer.crosscut{margin-top:16px;}
           <div class="box done" style="flex:1;min-width:200px;"><h4>Embedding models</h4><p>OpenAI / OpenRouter API embeddings, or local sentence-transformers.</p><div class="tags"><span class="tag">agents/embeddings.py</span></div></div>
           <div class="box done" style="flex:1;min-width:200px;"><h4>RAG retrieval</h4><p>Cosine similarity over cached vectors; TF-IDF keyword fallback.</p></div>
           <div class="box done" style="flex:1;min-width:200px;"><h4>Deterministic fallback</h4><p>Rule-based mock reasoning when no key is configured — every agent still completes.</p></div>
-          <div class="box road" style="flex:1;min-width:200px;"><h4>Prompt / eval framework</h4><p>Versioned prompts with regression evals across model swaps.</p></div>
+          <div class="box done" style="flex:1;min-width:200px;"><h4>Eval framework</h4><p>Retrieval precision/recall + LLM-as-judge faithfulness scored against golden test cases, with run history.</p><div class="tags"><span class="tag">evals/</span></div></div>
           <div class="box road" style="flex:1;min-width:200px;"><h4>Full observability</h4><p>Tracing/metrics dashboard beyond the per-run transparency log.</p></div>
         </div>
       </section>
@@ -221,7 +221,7 @@ footer.crosscut{margin-top:16px;}
           <div class="box done"><h4>Trivy</h4><p>Real config + dependency CVE scans; auto-installed on Render.</p></div>
           <div class="box done"><h4>NVD REST API</h4><p>Live CVE lookups, no key required.</p></div>
           <div class="box done"><h4>Slack webhook</h4><p>Real-time alert dispatch on qualifying findings.</p></div>
-          <div class="box done"><h4>Gmail SMTP</h4><p>Email alert dispatch via app password.</p></div>
+          <div class="box road"><h4>Email (SMTP)</h4><p>Email alert dispatch alongside Slack.</p></div>
           <div class="box road"><h4>SIEM / SOAR</h4><p>Splunk, Sentinel, or XSOAR two-way integration.</p></div>
           <div class="box road"><h4>ITSM (Jira/ServiceNow)</h4><p>Auto-file tickets from Incident Response output.</p></div>
           <div class="box road"><h4>Cloud security posture</h4><p>AWS/Azure/GCP config scanning alongside container scanning.</p></div>
@@ -232,7 +232,7 @@ footer.crosscut{margin-top:16px;}
       <section class="panel">
         <div class="panel-head"><h3>Outputs</h3></div>
         <div class="stack">
-          <div class="box done"><h4>Prioritized alert</h4><p>Slack/email, only for findings at/above the configured severity.</p></div>
+          <div class="box done"><h4>Prioritized alert</h4><p>Slack, only for findings at/above the configured severity.</p></div>
           <div class="box done"><h4>Markdown report</h4><p>One stitched report from every stage's output.</p><div class="tags"><span class="tag">report_builder.py</span></div></div>
           <div class="box done"><h4>Remediation playbook</h4><p>Incident Response's actionable, ranked fix list.</p></div>
           <div class="box done"><h4>Compliance gap report</h4><p>Findings mapped to specific NIST/ISO/SOC2 controls.</p></div>
