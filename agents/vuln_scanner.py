@@ -84,18 +84,76 @@ def _run_trivy_json(args, timeout):
 
 
 @contextlib.contextmanager
-def _isolated_scan_dir(path):
+def _isolated_scan_dir(path, dest_name=None):
     """Copy ONE file into a fresh private temp dir and yield that dir. Trivy's
     config/fs scans take a directory, and scanning dirname(uploaded_file)
     would ingest whatever else that directory happens to hold - on a shared
     host, potentially another session's uploads, whose contents would then
-    surface in this requester's findings."""
+    surface in this requester's findings.
+
+    dest_name overrides the copy's filename (see _canonical_dependency_name -
+    Trivy's fs vuln scanner identifies package manager files by exact
+    filename, not content, so an upload saved under any other name would
+    silently produce zero findings otherwise)."""
     scan_dir = tempfile.mkdtemp(prefix="trivy_scan_")
     try:
-        shutil.copy2(path, os.path.join(scan_dir, os.path.basename(path)))
+        shutil.copy2(path, os.path.join(scan_dir, dest_name or os.path.basename(path)))
         yield scan_dir
     finally:
         shutil.rmtree(scan_dir, ignore_errors=True)
+
+
+# Trivy's `trivy fs --scanners vuln` recognizes package-manager files by exact
+# filename (confirmed empirically: an identical file scans as 0 vulnerabilities
+# under a renamed basename vs. its canonical name), unlike `trivy config`,
+# which detects Dockerfile/Kubernetes/Terraform/CloudFormation content
+# regardless of filename. A user-uploaded file rarely keeps the exact
+# canonical name (Gradio preserves whatever the user's local file was called,
+# e.g. "backend-requirements.txt" or "requirements_prod.txt"), so without this
+# mapping the scan would silently report "no known vulnerabilities" instead of
+# "this file wasn't recognized".
+_LOCKFILE_NAME_HINTS = {
+    "yarn": "yarn.lock",
+    "gemfile": "Gemfile.lock",
+    "cargo": "Cargo.lock",
+}
+_LOCKFILE_CONTENT_SNIFFS = [
+    ("yarn lockfile", "yarn.lock"),
+    ("gem\n  remote:", "Gemfile.lock"),
+    ("[[package]]", "Cargo.lock"),
+]
+
+
+def _canonical_dependency_name(path):
+    """Best-effort mapping from an arbitrary uploaded filename to the exact
+    filename Trivy's dependency scanner expects for that ecosystem. Falls back
+    to the original basename if the extension/content isn't recognized (the
+    scan then behaves exactly as it did before this fix - static fallback
+    still applies if Trivy finds nothing to scan)."""
+    basename = os.path.basename(path)
+    ext = os.path.splitext(basename)[1].lower()
+    if ext == ".txt":
+        return "requirements.txt"
+    if ext == ".json":
+        return "package-lock.json"
+    if ext == ".mod":
+        return "go.mod"
+    if ext == ".xml":
+        return "pom.xml"
+    if ext == ".lock":
+        lower = basename.lower()
+        for hint, canonical in _LOCKFILE_NAME_HINTS.items():
+            if hint in lower:
+                return canonical
+        try:
+            with open(path, encoding="utf-8", errors="replace") as f:
+                head = f.read(2048).lower()
+        except OSError:
+            head = ""
+        for sniff, canonical in _LOCKFILE_CONTENT_SNIFFS:
+            if sniff in head:
+                return canonical
+    return basename
 
 
 def _trivy_scan_dockerfile(dockerfile_path: str):
@@ -120,7 +178,8 @@ def _trivy_scan_dockerfile(dockerfile_path: str):
 
 def _trivy_scan_dependencies(requirements_path: str):
     """Returns (findings, error_reason) - exactly one of the two is None."""
-    with _isolated_scan_dir(requirements_path) as scan_dir:
+    dest_name = _canonical_dependency_name(requirements_path)
+    with _isolated_scan_dir(requirements_path, dest_name=dest_name) as scan_dir:
         data, error = _run_trivy_json(["fs", scan_dir, "--scanners", "vuln"], timeout=180)
     if data is None:
         return None, error
