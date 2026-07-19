@@ -1,0 +1,11 @@
+Jul 18 03:14:07 web01 sshd[21334]: Failed password for root from 203.0.113.45 port 51422 ssh2
+Jul 18 03:14:09 web01 sshd[21335]: Failed password for root from 203.0.113.45 port 51430 ssh2
+Jul 18 03:14:11 web01 sshd[21336]: Failed password for root from 203.0.113.45 port 51438 ssh2
+Jul 18 03:14:13 web01 sshd[21337]: Failed password for admin from 203.0.113.45 port 51446 ssh2
+Jul 18 03:14:15 web01 sshd[21338]: Failed password for admin from 203.0.113.45 port 51454 ssh2
+Jul 18 03:15:02 web01 sshd[21344]: Accepted password for root from 198.51.100.7 port 44210 ssh2
+Jul 18 03:15:44 web01 sudo[21388]:   root : TTY=pts/0 ; PWD=/var/www/html ; USER=root ; COMMAND=/bin/chmod 777 /var/www/html/uploads
+Jul 18 03:16:44 web01 kernel: [UFW BLOCK] IN=eth0 OUT= MAC=02:42:ac:11:00:02:00:16:3e:12:34:56:08:00 SRC=192.0.2.88 DST=198.51.100.7 LEN=40 TOS=0x00 PREC=0x00 TTL=245 ID=54321 PROTO=TCP SPT=52344 DPT=22 WINDOW=1024 RES=0x00 SYN URGP=0
+Jul 18 03:16:46 web01 kernel: [UFW BLOCK] IN=eth0 OUT= MAC=02:42:ac:11:00:02:00:16:3e:12:34:56:08:00 SRC=192.0.2.88 DST=198.51.100.7 LEN=40 TOS=0x00 PREC=0x00 TTL=245 ID=54322 PROTO=TCP SPT=52345 DPT=3389 WINDOW=1024 RES=0x00 SYN URGP=0
+Jul 18 03:16:48 web01 kernel: [UFW BLOCK] IN=eth0 OUT= MAC=02:42:ac:11:00:02:00:16:3e:12:34:56:08:00 SRC=192.0.2.88 DST=198.51.100.7 LEN=40 TOS=0x00 PREC=0x00 TTL=245 ID=54323 PROTO=TCP SPT=52346 DPT=6379 WINDOW=1024 RES=0x00 SYN URGP=0
+Jul 18 03:20:01 web01 CRON[21390]: (root) CMD (/usr/local/bin/backup.sh)

@@ -21,10 +21,10 @@ if hasattr(sys.stdout, "reconfigure"):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--log", default="data/sample_auth.log")
-    parser.add_argument("--dockerfile", default="data/Dockerfile")
-    parser.add_argument("--requirements", default="data/requirements.txt")
-    parser.add_argument("--policy", default="data/policy_excerpt.md")
+    parser.add_argument("--log", default="data/testing/quick_demo/sample_auth.log")
+    parser.add_argument("--dockerfile", default="data/testing/quick_demo/Dockerfile")
+    parser.add_argument("--requirements", default="data/testing/quick_demo/requirements.txt")
+    parser.add_argument("--policy", default="data/testing/quick_demo/policy_excerpt.md")
     parser.add_argument("--out", default="output/report.md")
     parser.add_argument("--json-out", default="output/state.json")
     args = parser.parse_args()

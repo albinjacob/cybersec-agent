@@ -53,13 +53,13 @@ integrations the topic ultimately wants:
 - **Orchestration** — `orchestrator.py`'s `SimpleGraph` stands in for
   `langgraph.graph.StateGraph`. Structured so swapping in real LangGraph
   is close to a find-and-replace (see docstring at top of that file).
-- **Threat intel feed** — `data/cve_dataset.json`, 10 hand-picked
+- **Threat intel feed** — `data/knowledgebase/cve_dataset.json`, 10 hand-picked
   CVE/pattern records, instead of a live NVD API query.
 - **Vulnerability scanner** — custom static checks over `Dockerfile` /
   `requirements.txt` in `vuln_scanner.py`, instead of shelling out to a
   real Trivy install (`trivy image ... --format json`).
 - **Policy RAG** — TF-IDF + cosine similarity (scikit-learn, offline) over
-  a 9-clause condensed policy excerpt (`data/policy_excerpt.md`), instead
+  a 9-clause condensed policy excerpt (`data/testing/quick_demo/policy_excerpt.md`), instead
   of real embeddings over the full NIST 800-53 / ISO 27001 / SOC2
   corpora.
 - **Notifications** — since built: `agents/notify.py` is a terminal LangGraph

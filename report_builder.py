@@ -5,7 +5,7 @@ Aggregates all agent outputs into a single markdown report - the "traceable,
 actionable output" the hackathon topic calls for.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 def build_report(state) -> str:
@@ -39,7 +39,7 @@ def build_report(state) -> str:
 
     lines = []
     lines.append("# Cybersecurity AI Agent - Incident & Compliance Report")
-    lines.append(f"_Generated {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}_")
+    lines.append(f"_Generated {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}_")
     lines.append("")
     lines.append("## Executive Summary")
     lines.append(f"**Overall risk: {risk_level}** — {total} issue(s) detected across logs and dependencies "
@@ -66,7 +66,8 @@ def build_report(state) -> str:
     for item in ir.get("plan", []):
         c = item.get("council")
         if c and c.get("mode") == "live":
-            tag = "AGREE" if c["agreement"] else "DISAGREE"
+            # agreement is "agree" / "disagree" / "unparseable" (council._parse_agreement)
+            tag = {"agree": "AGREE", "disagree": "DISAGREE"}.get(c["agreement"], "NO CLEAR VERDICT")
             lines.append(f"\n> 🏛️ **Model Council** ({tag}) on \"{item['issue']}\": {c['judge_verdict']}")
     lines.append("")
     lines.append("## 5. Policy Checker Agent - Compliance Gaps")

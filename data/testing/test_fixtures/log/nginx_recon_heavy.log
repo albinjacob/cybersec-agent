@@ -1,0 +1,6 @@
+198.51.100.23 - - [18/Jul/2026:03:22:11 +0000] "GET /wp-admin/setup-config.php HTTP/1.1" 404 162 "-" "Mozilla/5.0 (X11; Linux x86_64) curl/7.81.0"
+198.51.100.23 - - [18/Jul/2026:03:22:12 +0000] "GET /../../etc/passwd HTTP/1.1" 400 166 "-" "Mozilla/5.0 (X11; Linux x86_64) curl/7.81.0"
+198.51.100.23 - - [18/Jul/2026:03:22:13 +0000] "GET /.env HTTP/1.1" 404 153 "-" "python-requests/2.31.0"
+198.51.100.23 - - [18/Jul/2026:03:22:14 +0000] "GET /phpmyadmin/index.php HTTP/1.1" 404 158 "-" "python-requests/2.31.0"
+203.0.113.90 - - [18/Jul/2026:03:23:40 +0000] "POST /login HTTP/1.1" 200 512 "https://shop.example.com/login" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126.0.0.0 Safari/537.36"
+198.51.100.44 - - [18/Jul/2026:03:26:15 +0000] "GET /index.html HTTP/1.1" 200 4521 "https://www.example.com/" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15"

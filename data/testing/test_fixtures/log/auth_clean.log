@@ -1,0 +1,7 @@
+Jul 18 02:10:01 web01 sshd[19882]: Accepted publickey for deploy from 198.51.100.22 port 40810 ssh2
+Jul 18 02:14:03 web01 sshd[19910]: Accepted publickey for deploy from 198.51.100.22 port 40877 ssh2
+Jul 18 02:20:01 web01 CRON[19944]: (root) CMD (/usr/local/bin/backup.sh)
+Jul 18 03:02:11 web01 sshd[19977]: Accepted publickey for ci-runner from 198.51.100.30 port 51200 ssh2
+Jul 18 03:15:44 web01 sudo[20012]:   deploy : TTY=pts/0 ; PWD=/home/deploy ; USER=root ; COMMAND=/bin/systemctl restart nginx
+Jul 18 04:00:00 web01 CRON[20055]: (root) CMD (/usr/local/bin/logrotate.sh)
+Jul 18 05:30:12 web01 sshd[20101]: Accepted publickey for deploy from 198.51.100.22 port 44210 ssh2

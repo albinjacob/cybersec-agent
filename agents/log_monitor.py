@@ -8,9 +8,10 @@ precision; the LLM call (or mock) is used to turn raw hits into a narrative
 summary an analyst can read quickly.
 """
 
+import json
 import re
 from collections import defaultdict
-from .llm import reason, get_last_fallback_reason
+from .llm import UNTRUSTED_DATA_NOTE, fence_untrusted, reason
 
 FAILED_SSH_RE = re.compile(r"Failed password for (\w+) from ([\d.]+) port (\d+)")
 ACCEPTED_SSH_RE = re.compile(r"Accepted (password|publickey) for (\w+) from ([\d.]+)")
@@ -27,7 +28,9 @@ def parse_log(path: str):
     failed_counts = defaultdict(list)
     scan_ports = defaultdict(set)
 
-    with open(path) as f:
+    # utf-8 with replacement: an uploaded log must never crash the node over
+    # one non-ASCII byte (Windows' cp1252 default would).
+    with open(path, encoding="utf-8", errors="replace") as f:
         lines = f.readlines()
 
     for line in lines:
@@ -113,19 +116,25 @@ def _mock_summary(findings):
     return "\n".join(lines)
 
 
-def run(log_path: str):
+def run(log_path: str, llm_config: dict | None = None):
     findings = parse_log(log_path)
     system_prompt = (
         "You are a SOC log analyst. Given structured findings extracted from a "
         "server log, write a concise, prioritized narrative summary for an incident "
-        "responder, ordered by severity."
+        "responder, ordered by severity." + UNTRUSTED_DATA_NOTE
     )
-    user_prompt = f"Findings:\n{findings}"
-    summary, mode = reason(system_prompt, user_prompt, mock_fn=lambda: _mock_summary(findings))
+    # Selected fields only (no raw evidence lines, no dict-repr noise) - the
+    # detail string already carries what the narrative needs, at a fraction of
+    # the tokens - and fenced, since detail text derives from the uploaded log.
+    compact = [{"type": f["type"], "severity": f["severity"], "detail": f["detail"]} for f in findings]
+    user_prompt = fence_untrusted(json.dumps(compact, indent=1))
+    summary, mode, fallback_reason = reason(system_prompt, user_prompt,
+                                            mock_fn=lambda: _mock_summary(findings),
+                                            config=llm_config)
     return {
         "agent": "log_monitor",
         "findings": findings,
         "summary": summary,
         "reasoning_mode": mode,
-        "reasoning_fallback_reason": get_last_fallback_reason() if mode == "mock" else None,
+        "reasoning_fallback_reason": fallback_reason,
     }

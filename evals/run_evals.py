@@ -94,16 +94,18 @@ def _mock_case_summary(findings):
     return "Findings:\n" + "\n".join(lines)
 
 
-def _score_case(case, repeats=3):
+def _score_case(case, repeats=3, llm_config=None):
     findings = case["findings"]
     user_prompt = f"Findings:\n{findings}"
     scores = []
+    parse_failures = 0
     reasoning_mode = None
     last_summary = None
     last_judge_reason = None
     for _ in range(repeats):
-        summary, mode = reason(_SUMMARY_SYSTEM_PROMPT, user_prompt,
-                                mock_fn=lambda: _mock_case_summary(findings))
+        summary, mode, _ = reason(_SUMMARY_SYSTEM_PROMPT, user_prompt,
+                                  mock_fn=lambda: _mock_case_summary(findings),
+                                  config=llm_config)
         reasoning_mode = mode
         last_summary = summary
         if mode == "mock":
@@ -114,47 +116,61 @@ def _score_case(case, repeats=3):
             last_judge_reason = "No live model configured - mock summary was not independently judged."
             continue
         judge_prompt = f"Rubric: {case['rubric']}\n\nFindings:\n{findings}\n\nSummary to grade:\n{summary}"
-        judge_text, judge_mode = reason(_JUDGE_SYSTEM_PROMPT, judge_prompt)
-        m = SCORE_RE.search(judge_text)
-        scores.append((int(m.group(1)), int(m.group(2))) if m else (3, 3))
+        judge_text, judge_mode, _ = reason(_JUDGE_SYSTEM_PROMPT, judge_prompt, config=llm_config)
         last_judge_reason = judge_text
+        m = SCORE_RE.search(judge_text)
+        if m:
+            scores.append((int(m.group(1)), int(m.group(2))))
+        else:
+            # A judge reply the rubric regex can't parse is a REAL signal (a
+            # format regression is exactly what an eval should catch) - count
+            # it visibly instead of hiding it inside a fake neutral score,
+            # which would bias every mean toward 3.
+            parse_failures += 1
     faithfulness = [s[0] for s in scores]
     relevance = [s[1] for s in scores]
+    # All repeats unparseable: report neutral means but the parse_failures
+    # count (surfaced by the UI) says how much to trust them - which is not at all.
     return {
         "name": case["name"],
         "rubric": case["rubric"],
         "reasoning_mode": reasoning_mode,
-        "faithfulness_mean": statistics.mean(faithfulness),
+        "parse_failures": parse_failures,
+        "faithfulness_mean": statistics.mean(faithfulness) if faithfulness else 3.0,
         "faithfulness_stddev": statistics.pstdev(faithfulness) if len(faithfulness) > 1 else 0.0,
-        "relevance_mean": statistics.mean(relevance),
+        "relevance_mean": statistics.mean(relevance) if relevance else 3.0,
         "relevance_stddev": statistics.pstdev(relevance) if len(relevance) > 1 else 0.0,
         "sample_summary": last_summary,
         "judge_reason": last_judge_reason,
     }
 
 
-def run_reasoning_eval(progress_cb=None):
+def run_reasoning_eval(progress_cb=None, llm_config=None):
     cases = []
     total = len(golden_cases.REASONING_CASES)
     for i, case in enumerate(golden_cases.REASONING_CASES):
         if progress_cb:
             progress_cb(f"Scoring reasoning case {i + 1}/{total}: {case['name']}")
-        cases.append(_score_case(case))
+        cases.append(_score_case(case, llm_config=llm_config))
     n = len(cases) or 1
     return {
         "faithfulness_mean": sum(c["faithfulness_mean"] for c in cases) / n,
         "relevance_mean": sum(c["relevance_mean"] for c in cases) / n,
+        "parse_failures": sum(c["parse_failures"] for c in cases),
         "reasoning_mode": cases[0]["reasoning_mode"] if cases else "mock",
         "cases": cases,
     }
 
 
-def run_all(progress_cb=None):
-    """Returns one structured run_record dict - what gets persisted and rendered."""
+def run_all(progress_cb=None, llm_config=None):
+    """Returns one structured run_record dict - what gets persisted and rendered.
+    `llm_config` is the per-request BYOK dict from the UI (see llm.reason) so an
+    eval run uses the key the CURRENT user pasted - not whatever global state a
+    previous pipeline run happened to leave behind."""
     if progress_cb:
         progress_cb("Running retrieval precision/recall against the policy corpus...")
     retrieval = run_retrieval_eval()
-    reasoning = run_reasoning_eval(progress_cb=progress_cb)
+    reasoning = run_reasoning_eval(progress_cb=progress_cb, llm_config=llm_config)
     return {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "retrieval": retrieval,

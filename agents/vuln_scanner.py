@@ -15,16 +15,21 @@ Checker, the UI) needs to know which path ran - `scan_mode` on the returned
 dict records which one did ("trivy" or "static-fallback").
 """
 
+import contextlib
 import glob
 import json
+import logging
 import os
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
 
-from .llm import reason, get_last_fallback_reason
+from .llm import UNTRUSTED_DATA_NOTE, fence_untrusted, reason
 from .threat_intel import load_local_feed
+
+log = logging.getLogger(__name__)
 
 SEVERITY_NORMALIZE = {
     "CRITICAL": "CRITICAL", "HIGH": "HIGH", "MEDIUM": "MEDIUM", "LOW": "LOW",
@@ -78,9 +83,25 @@ def _run_trivy_json(args, timeout):
         return None, f"trivy scan failed: {e}"
 
 
+@contextlib.contextmanager
+def _isolated_scan_dir(path):
+    """Copy ONE file into a fresh private temp dir and yield that dir. Trivy's
+    config/fs scans take a directory, and scanning dirname(uploaded_file)
+    would ingest whatever else that directory happens to hold - on a shared
+    host, potentially another session's uploads, whose contents would then
+    surface in this requester's findings."""
+    scan_dir = tempfile.mkdtemp(prefix="trivy_scan_")
+    try:
+        shutil.copy2(path, os.path.join(scan_dir, os.path.basename(path)))
+        yield scan_dir
+    finally:
+        shutil.rmtree(scan_dir, ignore_errors=True)
+
+
 def _trivy_scan_dockerfile(dockerfile_path: str):
     """Returns (findings, error_reason) - exactly one of the two is None."""
-    data, error = _run_trivy_json(["config", os.path.dirname(dockerfile_path) or "."], timeout=60)
+    with _isolated_scan_dir(dockerfile_path) as scan_dir:
+        data, error = _run_trivy_json(["config", scan_dir], timeout=60)
     if data is None:
         return None, error
     findings = []
@@ -99,9 +120,8 @@ def _trivy_scan_dockerfile(dockerfile_path: str):
 
 def _trivy_scan_dependencies(requirements_path: str):
     """Returns (findings, error_reason) - exactly one of the two is None."""
-    data, error = _run_trivy_json(
-        ["fs", os.path.dirname(requirements_path) or ".", "--scanners", "vuln"], timeout=180
-    )
+    with _isolated_scan_dir(requirements_path) as scan_dir:
+        data, error = _run_trivy_json(["fs", scan_dir, "--scanners", "vuln"], timeout=180)
     if data is None:
         return None, error
     findings = []
@@ -147,7 +167,7 @@ DOCKERFILE_CHECKS = [
 
 
 def _static_scan_dockerfile(path: str):
-    with open(path) as f:
+    with open(path, encoding="utf-8", errors="replace") as f:
         content = f.read()
     findings = []
     for check in DOCKERFILE_CHECKS:
@@ -184,7 +204,7 @@ def _static_scan_dependencies(req_path: str, deps):
 
 def parse_requirements(path: str):
     deps = []
-    with open(path) as f:
+    with open(path, encoding="utf-8", errors="replace") as f:
         for line in f:
             line = line.strip()
             if not line or line.startswith("#"):
@@ -204,7 +224,7 @@ def _mock_summary(findings):
     return "\n".join(lines)
 
 
-def run(dockerfile_path: str, requirements_path: str):
+def run(dockerfile_path: str, requirements_path: str, llm_config: dict | None = None):
     deps = parse_requirements(requirements_path)
     dep_names = [d[0] for d in deps]
 
@@ -215,10 +235,11 @@ def run(dockerfile_path: str, requirements_path: str):
         scan_mode = "trivy"
         scan_fallback_reason = None
     else:
+        scan_fallback_reason = docker_error or dep_error
+        log.warning("Trivy scan fell back to static checks: %s", scan_fallback_reason)
         docker_findings = _static_scan_dockerfile(dockerfile_path)
         dep_findings = _static_scan_dependencies(requirements_path, deps)
         scan_mode = "static-fallback"
-        scan_fallback_reason = docker_error or dep_error
 
     all_findings = docker_findings + dep_findings
 
@@ -226,17 +247,20 @@ def run(dockerfile_path: str, requirements_path: str):
         "You are an application security engineer reviewing static scan "
         "output (container config + dependency CVEs). Summarize the most "
         "important findings and their real-world exploitability, ordered "
-        "by severity."
+        "by severity." + UNTRUSTED_DATA_NOTE
     )
-    user_prompt = f"Findings:\n{all_findings}"
-    summary, mode = reason(system_prompt, user_prompt, mock_fn=lambda: _mock_summary(all_findings))
+    compact = [{"id": f["id"], "severity": f["severity"], "detail": f["detail"]} for f in all_findings]
+    user_prompt = fence_untrusted(json.dumps(compact, indent=1))
+    summary, mode, fallback_reason = reason(system_prompt, user_prompt,
+                                            mock_fn=lambda: _mock_summary(all_findings),
+                                            config=llm_config)
     return {
         "agent": "vuln_scanner",
         "findings": all_findings,
         "dependency_names": dep_names,
         "summary": summary,
         "reasoning_mode": mode,
-        "reasoning_fallback_reason": get_last_fallback_reason() if mode == "mock" else None,
+        "reasoning_fallback_reason": fallback_reason,
         "scan_mode": scan_mode,
         "scan_fallback_reason": scan_fallback_reason,
     }

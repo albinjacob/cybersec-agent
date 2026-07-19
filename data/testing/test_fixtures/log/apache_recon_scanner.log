@@ -1,0 +1,4 @@
+192.0.2.15 - - [18/Jul/2026:03:25:07 -0400] "GET /phpmyadmin/index.php HTTP/1.1" 404 209 "-" "Mozilla/5.0 (compatible; Nmap Scripting Engine; https://nmap.org/book/nse.html)"
+192.0.2.15 - - [18/Jul/2026:03:25:08 -0400] "GET /wp-admin/admin-ajax.php HTTP/1.1" 403 199 "-" "Mozilla/5.0 (compatible; Nmap Scripting Engine; https://nmap.org/book/nse.html)"
+192.0.2.15 - - [18/Jul/2026:03:25:09 -0400] "GET /../../../etc/passwd HTTP/1.1" 403 199 "-" "Mozilla/5.0 (compatible; Nmap Scripting Engine; https://nmap.org/book/nse.html)"
+198.51.100.44 - - [18/Jul/2026:03:26:15 -0400] "GET /index.html HTTP/1.1" 200 4521 "https://www.example.com/" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15"

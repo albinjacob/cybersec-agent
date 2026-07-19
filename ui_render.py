@@ -9,9 +9,22 @@ sees them) rather than by parsing the LLM's free-text narrative summary,
 which is far more robust to formatting drift across models/providers.
 """
 
+import html
 import os
 import re
 import urllib.parse
+
+
+def _esc(value):
+    """HTML-escape any dynamic value before interpolation into markup.
+
+    Everything rendered on these pages that didn't originate in this file is
+    untrusted: log lines a user uploaded, CVE text from live NVD, Trivy
+    messages, package names from a requirements.txt, and every LLM response.
+    Unescaped, any of those can carry markup/script into gr.HTML - a log line
+    is all it takes. Escape at the interpolation site, never earlier, so the
+    underlying data stays clean for prompts/reports/JSON."""
+    return html.escape(str(value), quote=True)
 
 # ---------------------------------------------------------------- constants
 
@@ -252,18 +265,27 @@ FILE_HELP = {
         icon="🐳",
         title="Infrastructure config",
         supported=["<code>Dockerfile</code>", "Kubernetes manifests (<code>.yaml</code>)",
-                    "docker-compose, Helm charts", "Terraform, CloudFormation"],
-        unsupported=[],
+                    "Terraform (<code>.tf</code>)", "CloudFormation (<code>.yaml</code>/<code>.json</code>)"],
+        unsupported=["<code>docker-compose.yml</code> — Trivy has no native parser for it "
+                      "(tracked upstream, unresolved)",
+                      "Raw Helm charts — a single template file can't be recognized without the "
+                      "full chart directory. <b>Workaround:</b> run <code>helm template mychart "
+                      "&gt; rendered.yaml</code> locally and upload that instead — it scans as a "
+                      "plain Kubernetes manifest"],
         detects="Scanned by <b>Trivy</b> for misconfigurations — running as root, missing "
-                "HEALTHCHECK, privileged containers, unpinned packages, dropped capabilities.",
+                "HEALTHCHECK, privileged containers, unpinned packages, dropped capabilities. "
+                "A single Terraform/CloudFormation file can't resolve remote state, and "
+                "CloudFormation silently skips templates using some advanced intrinsic functions "
+                "— zero findings there isn't necessarily a clean bill of health.",
     ),
     "requirements": dict(
         icon="📦",
         title="Dependency manifest",
         supported=["<code>requirements.txt</code> (Python)",
                     "<code>package-lock.json</code>, <code>yarn.lock</code> (Node)",
-                    "<code>go.sum</code>, <code>pom.xml</code>, <code>Gemfile.lock</code>, <code>Cargo.lock</code>"],
-        unsupported=[],
+                    "<code>go.mod</code> (Go)", "<code>pom.xml</code>, <code>Gemfile.lock</code>, <code>Cargo.lock</code>"],
+        unsupported=["<code>go.sum</code> alone — Trivy needs the paired <code>go.mod</code> to "
+                      "even determine the module/Go version; upload <code>go.mod</code> instead"],
         detects="Scanned by <b>Trivy</b> against its CVE database for known-vulnerable "
                 "package versions. Unpinned/loose ranges are skipped — pinned versions work best.",
     ),
@@ -340,7 +362,7 @@ CVE_ID_RE = re.compile(r"^CVE-\d{4}-\d+")
 # a purchase page. A link that disappoints is worse than no link.
 #
 # Canonical spellings match what's baked into the policy corpus itself
-# (data/policy_index_meta.json titles): "NIST SP 800-53", "SOC 2", not
+# (data/knowledgebase/policy_index_meta.json titles): "NIST SP 800-53", "SOC 2", not
 # "NIST 800-53"/"SOC2" - one standard, one name, everywhere.
 GLOSSARY = {
     "NIST SP 800-53": dict(
@@ -624,7 +646,9 @@ def fallback_warning_html(warnings):
     quiet colored mode badges, since a silent fallback is easy to miss."""
     if not warnings:
         return ""
-    items = "".join(f'<li style="margin-bottom:2px;"><b>{label}:</b> {reason}</li>' for label, reason in warnings)
+    # reason strings can embed upstream API error text (response bodies, model
+    # names) - untrusted like everything else that crosses a network boundary
+    items = "".join(f'<li style="margin-bottom:2px;"><b>{_esc(label)}:</b> {_esc(reason)}</li>' for label, reason in warnings)
     return (
         f'<div style="background:{WARN_AMBER}1a; border:1px solid {WARN_AMBER}; border-left:4px solid {WARN_AMBER}; '
         'border-radius:8px; padding:12px 16px; margin-bottom:12px;">'
@@ -637,12 +661,16 @@ def fallback_warning_html(warnings):
 
 
 def _card_html(icon, title, badge_text, color, body_html, extra_html="", open_default=False):
+    # title/badge are always plain text at every call site (finding ids, CVE
+    # ids, issue text, policy headers - several of them attacker-influenced),
+    # so they're escaped centrally here; body_html/extra_html are caller-built
+    # markup and each caller escapes its own dynamic values.
     open_attr = " open" if open_default else ""
     return f"""
     <details class="finding-card" style="border-left:4px solid {color}; background:{color}12;"{open_attr}>
       <summary>
-        <span class="fc-title">{icon} {title}</span>
-        <span class="fc-badge" style="background:{color};">{badge_text}</span>
+        <span class="fc-title">{icon} {_esc(title)}</span>
+        <span class="fc-badge" style="background:{color};">{_esc(badge_text)}</span>
       </summary>
       <div class="fc-body">
         <div style="font-size:13.5px; line-height:1.55;">{body_html}</div>
@@ -669,12 +697,12 @@ def render_log_monitor_cards(findings):
         if f.get("evidence"):
             extra = (f'<div class="subdued-text" style="margin-top:8px; font-family:var(--font-mono, monospace); '
                       f'font-size:11.5px; background:var(--background-fill-secondary); padding:6px 10px; '
-                      f'border-radius:6px; overflow-x:auto;">{f["evidence"]}</div>')
+                      f'border-radius:6px; overflow-x:auto;">{_esc(f["evidence"])}</div>')
         explain, action, learn_more = knowledge_for(f["type"])
         extra += _explainer_html(explain, action, learn_more)
         # CRITICAL always open; HIGH open only if <5 total HIGH; MEDIUM/LOW closed
         should_open = f["severity"] == "CRITICAL" or (f["severity"] == "HIGH" and high_count < 5)
-        cards.append(_card_html(icon, title, f["severity"], color, f["detail"], extra,
+        cards.append(_card_html(icon, title, f["severity"], color, _esc(f["detail"]), extra,
                                  open_default=should_open))
     return _cards_wrap(cards, "No suspicious activity detected in the supplied log.")
 
@@ -688,12 +716,12 @@ def render_vuln_scanner_cards(findings):
         icon = "📦" if f.get("source") == "dependency_scan" else "🐳"
         extra = ""
         if f.get("package"):
-            extra = f'<div style="margin-top:6px;"><code style="font-size:11.5px;">{f["package"]}=={f.get("version", "")}</code></div>'
+            extra = f'<div style="margin-top:6px;"><code style="font-size:11.5px;">{_esc(f["package"])}=={_esc(f.get("version", ""))}</code></div>'
         explain, action, learn_more = knowledge_for(f["id"], package=f.get("package"))
         extra += _explainer_html(explain, action, learn_more)
         # CRITICAL always open; HIGH open only if <5 total HIGH; MEDIUM/LOW closed
         should_open = f["severity"] == "CRITICAL" or (f["severity"] == "HIGH" and high_count < 5)
-        cards.append(_card_html(icon, f["id"], f["severity"], color, f["detail"], extra,
+        cards.append(_card_html(icon, f["id"], f["severity"], color, _esc(f["detail"]), extra,
                                  open_default=should_open))
     return _cards_wrap(cards, "No known vulnerabilities or misconfigurations found.")
 
@@ -706,7 +734,7 @@ def render_threat_intel_cards(matches):
         color = SEVERITY_COLORS[m["severity"]]
         chips = "".join(
             f'<span style="display:inline-block; background:var(--background-fill-secondary); '
-            f'padding:2px 8px; border-radius:6px; font-size:11px; margin:4px 4px 0 0;">{a}</span>'
+            f'padding:2px 8px; border-radius:6px; font-size:11px; margin:4px 4px 0 0;">{_esc(a)}</span>'
             for a in m.get("affected", [])
         )
         extra = f'<div>{chips}</div>' if chips else ""
@@ -715,7 +743,7 @@ def render_threat_intel_cards(matches):
         extra += _explainer_html(explain, action, learn_more)
         # CRITICAL always open; HIGH open only if <5 total HIGH; MEDIUM/LOW closed
         should_open = m["severity"] == "CRITICAL" or (m["severity"] == "HIGH" and high_count < 5)
-        cards.append(_card_html("🛰️", m["cve_id"], m["severity"], color, m["summary"], extra,
+        cards.append(_card_html("🛰️", m["cve_id"], m["severity"], color, _esc(m["summary"]), extra,
                                  open_default=should_open))
     return _cards_wrap(cards, "No known CVEs/threat patterns matched current findings.")
 
@@ -727,8 +755,13 @@ def _council_block_html(council):
     ok/warn states)."""
     if not council or council.get("mode") != "live":
         return ""
-    tone_color = OK_GREEN if council["agreement"] else WARN_AMBER
-    tone_label = "AGREE" if council["agreement"] else "DISAGREE"
+    # agreement is "agree" / "disagree" / "unparseable" (council._parse_agreement) -
+    # a judge reply that didn't lead with either word gets a neutral chip, not a
+    # silently-wrong DISAGREE.
+    tone_color, tone_label = {
+        "agree": (OK_GREEN, "AGREE"),
+        "disagree": (WARN_AMBER, "DISAGREE"),
+    }.get(council["agreement"], (IDLE_GREY, "NO CLEAR VERDICT"))
     return (
         '<div style="margin-top:12px; padding-top:10px; border-top:1px dashed var(--border-color-primary);">'
         '<div style="font-weight:700; font-size:12.5px; margin-bottom:6px;">🏛️ Model Council '
@@ -736,16 +769,16 @@ def _council_block_html(council):
         'this finding independently, then a judge reconciles both opinions</span></div>'
         '<div style="display:flex; gap:10px; flex-wrap:wrap;">'
         f'<div style="flex:1; min-width:220px; font-size:12px; background:var(--background-fill-secondary); '
-        f'border-radius:8px; padding:8px 10px;"><b>Opinion A</b> <span class="subdued-text">({council["model_a"]})</span>'
-        f'<div style="margin-top:4px;">{council["opinion_a"]}</div></div>'
+        f'border-radius:8px; padding:8px 10px;"><b>Opinion A</b> <span class="subdued-text">({_esc(council["model_a"])})</span>'
+        f'<div style="margin-top:4px;">{_esc(council["opinion_a"])}</div></div>'
         f'<div style="flex:1; min-width:220px; font-size:12px; background:var(--background-fill-secondary); '
-        f'border-radius:8px; padding:8px 10px;"><b>Opinion B</b> <span class="subdued-text">({council["model_b"]})</span>'
-        f'<div style="margin-top:4px;">{council["opinion_b"]}</div></div>'
+        f'border-radius:8px; padding:8px 10px;"><b>Opinion B</b> <span class="subdued-text">({_esc(council["model_b"])})</span>'
+        f'<div style="margin-top:4px;">{_esc(council["opinion_b"])}</div></div>'
         '</div>'
         f'<div style="margin-top:8px; padding:8px 10px; border-radius:8px; background:{tone_color}1a; '
         f'border:1px solid {tone_color}55;">'
         f'<span style="font-size:11px; font-weight:700; color:{tone_color}; letter-spacing:0.03em;">{tone_label}</span>'
-        f'<div style="margin-top:4px; font-size:12.5px;"><b>Judge\'s verdict:</b> {council["judge_verdict"]}</div>'
+        f'<div style="margin-top:4px; font-size:12.5px;"><b>Judge\'s verdict:</b> {_esc(council["judge_verdict"])}</div>'
         '</div>'
         '</div>'
     )
@@ -758,7 +791,7 @@ def render_incident_response_cards(plan):
     cards = []
     for p in items:
         color = SEVERITY_COLORS[p["severity"]]
-        steps_html = "".join(f'<li style="margin-bottom:4px;">{s}</li>' for s in p["steps"])
+        steps_html = "".join(f'<li style="margin-bottom:4px;">{_esc(s)}</li>' for s in p["steps"])
         # steps ARE the recommended action here, so only show the plain-English "what this means"
         # line, not a second, redundant action line.
         explain, _action, _learn_more = knowledge_for(p.get("finding_key"))
@@ -801,7 +834,7 @@ def render_policy_checker_cards(gaps):
                         f'font-weight:700; padding:2px 7px; border-radius:999px; cursor:{"help" if tip else "default"}; '
                         f'background:{src_color}1f; color:{src_color}; border:1px solid {src_color}55;">'
                         f'{src_label}</span>')
-        body = f'<b>Finding:</b> {g["finding"]}{src_chip}'
+        body = f'<b>Finding:</b> {_esc(g["finding"])}{src_chip}'
         extra = _explainer_html(
             "This finding isn't backed by evidence that the matched control is actually enforced.",
             action="Address the underlying finding above, then gather evidence (config exports, "
@@ -932,7 +965,7 @@ def pipeline_tracker_html(node_statuses=None, durations=None, state=None, error=
     error_html = ""
     if error:
         error_html = (f'<div style="margin-top:8px; color:{SEVERITY_COLORS["CRITICAL"]}; '
-                      f'font-size:13px;"><b>Pipeline error:</b> {error}</div>')
+                      f'font-size:13px;"><b>Pipeline error:</b> {_esc(error)}</div>')
     # A pulsing teal glow on the outer box (not a color already spoken for -
     # green means done, amber means degraded) makes "a run is actively in
     # progress" legible at a glance without looking like an alert.
@@ -1304,13 +1337,18 @@ def eval_score_tiles_html(record):
         ))
     else:
         faith = reasoning["faithfulness_mean"]
-        faith_color = OK_GREEN if faith >= 4 else WARN_AMBER
-        tiles.append(_eval_tile(
-            f'{faith:.1f} / 5', glossary_term("Faithfulness"),
+        parse_failures = reasoning.get("parse_failures", 0)
+        faith_color = OK_GREEN if (faith >= 4 and not parse_failures) else WARN_AMBER
+        caption = (
             "Low faithfulness means an agent's summary is stating things not actually present in "
-            f'the findings it was given - a hallucination risk. Judged by {reasoning["reasoning_mode"]}.',
-            faith_color,
-        ))
+            f'the findings it was given - a hallucination risk. Judged by {reasoning["reasoning_mode"]}.'
+        )
+        if parse_failures:
+            caption += (
+                f' ⚠️ {parse_failures} judge repl{"y" if parse_failures == 1 else "ies"} could not be '
+                'parsed against the scoring rubric and were excluded - treat this mean with caution.'
+            )
+        tiles.append(_eval_tile(f'{faith:.1f} / 5', glossary_term("Faithfulness"), caption, faith_color))
 
     return f'<div style="display:flex; gap:10px; flex-wrap:wrap;">{"".join(tiles)}</div>'
 
@@ -1319,10 +1357,10 @@ def _eval_retrieval_case_card(case):
     color = OK_GREEN if case["top1_hit"] else (WARN_AMBER if case["any_hit"] else SEVERITY_COLORS["HIGH"])
     badge = "TOP-1 MATCH" if case["top1_hit"] else ("IN TOP-3" if case["any_hit"] else "MISS")
     body = (
-        f'<div><b>Finding:</b> {case["finding_text"]}</div>'
-        f'<div style="margin-top:4px;"><b>Expected control family:</b> {", ".join(case["expected"])}</div>'
-        f'<div style="margin-top:4px;"><b>Actually retrieved:</b> {", ".join(case["retrieved"]) or "(nothing above the match threshold)"}</div>'
-        f'<div class="subdued-text" style="margin-top:6px; font-size:11.5px;">{case["note"]}</div>'
+        f'<div><b>Finding:</b> {_esc(case["finding_text"])}</div>'
+        f'<div style="margin-top:4px;"><b>Expected control family:</b> {_esc(", ".join(case["expected"]))}</div>'
+        f'<div style="margin-top:4px;"><b>Actually retrieved:</b> {_esc(", ".join(case["retrieved"])) or "(nothing above the match threshold)"}</div>'
+        f'<div class="subdued-text" style="margin-top:6px; font-size:11.5px;">{_esc(case["note"])}</div>'
     )
     return _card_html("🎯", "Retrieval case", badge, color, body)
 
@@ -1343,9 +1381,9 @@ def _eval_reasoning_case_card(case):
          else f'varied by ±{case["faithfulness_stddev"]:.1f} across repeats - {glossary_term("Consistency", "see why this matters")}')
     )
     body = (
-        f'<div><b>Rubric:</b> {case["rubric"]}</div>'
-        f'<div style="margin-top:6px;"><b>Sample summary graded:</b> {case["sample_summary"]}</div>'
-        f'<div style="margin-top:6px;"><b>Judge\'s reasoning:</b> {case["judge_reason"]}</div>'
+        f'<div><b>Rubric:</b> {_esc(case["rubric"])}</div>'
+        f'<div style="margin-top:6px;"><b>Sample summary graded:</b> {_esc(case["sample_summary"])}</div>'
+        f'<div style="margin-top:6px;"><b>Judge\'s reasoning:</b> {_esc(case["judge_reason"])}</div>'
         f'<div class="subdued-text" style="margin-top:6px; font-size:11.5px;">{consistency_note}</div>'
     )
     return _card_html("⚖️", case["name"].replace("_", " ").title(),
@@ -1368,15 +1406,20 @@ def eval_case_cards_html(record):
     )
 
 
-def deploy_key_hint_html(is_deployed, provider_configured):
+def deploy_key_hint_html(is_deployed, has_key):
     """Soft, dismissible-in-spirit nudge shown only on a deployed instance
-    (RENDER env var present) when nobody has configured an LLM key yet this
+    (RENDER env var present) when nobody has pasted an LLM key yet this
     session. Deliberately NOT shown for local runs (a dev machine has its own
     env-var/BYOK story already) and deliberately soft wording, not a blocking
     banner - this app is designed to run meaningfully with zero keys (mock
     reasoning + local/TF-IDF retrieval), so this should read as a tip to get
-    the full live experience, not a requirement."""
-    if not is_deployed or provider_configured:
+    the full live experience, not a requirement.
+
+    has_key reflects the API key textbox's current value directly, not
+    llm.current_provider() - that only updates once configure() runs inside
+    a pipeline call, so it stayed stale (still showing this hint) for a
+    user who pasted a key but hadn't clicked Run yet."""
+    if not is_deployed or has_key:
         return ""
     return (
         '<div style="display:flex; align-items:center; gap:10px; padding:8px 14px; '

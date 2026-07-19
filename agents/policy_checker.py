@@ -2,15 +2,15 @@
 Policy Checker Agent
 --------------------
 RAG over a policy corpus - the full NIST SP 800-53 Rev 5 control catalog
-(data/nist_800_53_catalog.json, ~1,014 controls + enhancements, sourced by
+(data/knowledgebase/nist_800_53_catalog.json, ~1,014 controls + enhancements, sourced by
 scripts/fetch_nist_catalog.py) plus a condensed ISO 27001/SOC2 excerpt
-(data/policy_excerpt.md) - using real semantic embeddings
+(data/testing/quick_demo/policy_excerpt.md) - using real semantic embeddings
 (agents/embeddings.py: local sentence-transformers by default, or a hosted
 API via BYOK). For each finding, retrieves the most relevant policy
 control(s) and flags them as compliance gaps.
 
-Embeddings are precomputed and cached to disk (data/policy_index_meta.json +
-data/policy_index_vectors.npy) rather than recomputed every run - NIST
+Embeddings are precomputed and cached to disk (data/knowledgebase/policy_index_meta.json +
+data/knowledgebase/policy_index_vectors.npy) rather than recomputed every run - NIST
 revises 800-53 roughly once every several years, so re-embedding ~1,000
 chunks on every pipeline execution would be pure waste. The cache is
 rebuilt only via the UI's "Rebuild Index" button (agents/policy_checker.py's
@@ -23,19 +23,23 @@ dict recording which path ran and why, same pattern as scan_mode/feed_mode.
 
 import hashlib
 import json
+import logging
 import os
 import re
 from datetime import datetime, timezone
 
 import numpy as np
+import requests
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 from . import embeddings
-from .llm import reason, get_last_fallback_reason
+from .llm import UNTRUSTED_DATA_NOTE, fence_untrusted, reason
 
-NIST_CATALOG_PATH = "data/nist_800_53_catalog.json"
-DEFAULT_POLICY_PATH = "data/policy_excerpt.md"
+log = logging.getLogger(__name__)
+
+NIST_CATALOG_PATH = "data/knowledgebase/nist_800_53_catalog.json"
+DEFAULT_POLICY_PATH = "data/testing/quick_demo/policy_excerpt.md"
 
 # One cache pair PER embedding provider, not one shared pair - a dev machine
 # (typically "local", no key) and a deployment (typically "openrouter", one
@@ -44,8 +48,8 @@ DEFAULT_POLICY_PATH = "data/policy_excerpt.md"
 # them, permanently flagging the other as "rebuild needed". Keying the
 # filename by provider lets both live in the repo simultaneously, each valid
 # for its own environment.
-CACHE_META_PATH_TMPL = "data/policy_index_meta.{provider}.json"
-CACHE_VECTORS_PATH_TMPL = "data/policy_index_vectors.{provider}.npy"
+CACHE_META_PATH_TMPL = "data/knowledgebase/policy_index_meta.{provider}.json"
+CACHE_VECTORS_PATH_TMPL = "data/knowledgebase/policy_index_vectors.{provider}.npy"
 
 
 def _cache_paths(provider):
@@ -60,7 +64,7 @@ TFIDF_MIN_SCORE = 0.05
 
 
 def load_policy_chunks(path: str):
-    with open(path) as f:
+    with open(path, encoding="utf-8", errors="replace") as f:
         content = f.read()
     # split on markdown headers (## ...) - each header + body is one chunk
     parts = re.split(r"(?=^## )", content, flags=re.MULTILINE)
@@ -305,19 +309,24 @@ def _retrieve_all(index, all_findings, min_score):
     return gaps
 
 
-def run(policy_path: str, all_findings):
+def run(policy_path: str, all_findings, llm_config: dict | None = None):
     # embeddings.embed() raises on failure (missing dependency, bad key,
     # network error) by design - this is the safety net that turns that into
     # a graceful TF-IDF fallback instead of crashing the whole pipeline node.
     # Covers both index construction (_get_index() may itself call embed() to
-    # embed a user-supplied policy doc) and per-query retrieval.
+    # embed a user-supplied policy doc) and per-query retrieval. Deliberately
+    # NARROW: only the failure classes embed() genuinely produces (missing
+    # key/dependency, network/API errors). A genuine bug in retrieval code
+    # should crash loudly into the app-level handler, not masquerade as
+    # "embedding failed".
     try:
         index, embedding_mode, embedding_fallback_reason = _get_index(policy_path)
         min_score = EMBEDDING_MIN_SCORE if embedding_mode == "embeddings" else TFIDF_MIN_SCORE
         gaps = _retrieve_all(index, all_findings, min_score)
-    except Exception as e:
+    except (RuntimeError, ImportError, OSError, requests.RequestException) as e:
         embedding_mode = "tfidf-fallback"
         embedding_fallback_reason = f"Embedding failed ({e}) - falling back to keyword search."
+        log.warning("Policy retrieval fell back to TF-IDF: %s", e)
         index = PolicyIndex(load_policy_chunks(policy_path))
         gaps = _retrieve_all(index, all_findings, TFIDF_MIN_SCORE)
 
@@ -325,9 +334,19 @@ def run(policy_path: str, all_findings):
         "You are a compliance analyst. Given security findings mapped to policy "
         "clauses (NIST 800-53 / ISO 27001 / SOC2), summarize which controls are "
         "not being met and what evidence would be needed to close each gap."
+        + UNTRUSTED_DATA_NOTE
     )
-    user_prompt = f"Mapped gaps:\n{gaps}"
-    summary, mode = reason(system_prompt, user_prompt, mock_fn=lambda: _mock_summary(gaps))
+    # Selected fields only: the full policy_chunk text (up to a whole NIST
+    # control statement per gap) is the single biggest token sink in the
+    # pipeline - the control's title line + match score carries what the
+    # narrative needs.
+    compact = [{"finding": g["finding"],
+                "control": g["policy_chunk"].splitlines()[0].replace("## ", ""),
+                "score": round(g["score"], 2)} for g in gaps]
+    user_prompt = fence_untrusted(json.dumps(compact, indent=1), tag="mapped_gaps")
+    summary, mode, reasoning_fallback_reason = reason(system_prompt, user_prompt,
+                                                      mock_fn=lambda: _mock_summary(gaps),
+                                                      config=llm_config)
     # Only meaningful when embeddings actually ran - a tfidf-fallback run didn't
     # use this provider at all, so recording it there would misrepresent what
     # actually happened this request.
@@ -339,7 +358,7 @@ def run(policy_path: str, all_findings):
         "gaps": gaps,
         "summary": summary,
         "reasoning_mode": mode,
-        "reasoning_fallback_reason": get_last_fallback_reason() if mode == "mock" else None,
+        "reasoning_fallback_reason": reasoning_fallback_reason,
         "embedding_mode": embedding_mode,
         "embedding_fallback_reason": embedding_fallback_reason,
         "embedding_provider": embedding_provider,

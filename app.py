@@ -33,10 +33,18 @@ Run with:
     python3 app.py
 """
 
+import logging
 import os
 import time
+import uuid
 
 import gradio as gr
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+log = logging.getLogger(__name__)
 
 from orchestrator import stream_pipeline
 from report_builder import build_report
@@ -173,16 +181,11 @@ def preflight():
     know, and probing it on every page load would be slow and could itself
     time out, which is exactly the flakiness the fallback exists for.
     """
-    # LLM: which provider would actually be used (mirrors reason()'s order)
-    provider = None
-    if llm._RUNTIME.get("provider"):
-        provider = llm._RUNTIME["provider"]
-    elif llm.ANTHROPIC_API_KEY:
-        provider = "anthropic"
-    elif llm.OPENAI_API_KEY:
-        provider = "openai"
-    elif llm.OPENROUTER_API_KEY:
-        provider = "openrouter"
+    # LLM: which provider would actually be used (llm.current_provider mirrors
+    # reason()'s own detection order). Session keys are per-request now, so
+    # pre-run this reflects env-configured keys only - the chip flips to the
+    # observed reasoning mode once a run reports it.
+    provider = llm.current_provider()
     llm_pre = (provider, "ok") if provider else ("no key → mock", "warn")
 
     scanner_pre = ("Trivy", "ok") if vuln_scanner._find_trivy() else ("not installed", "warn")
@@ -261,7 +264,11 @@ def notify_status_html(slack_webhook, severities):
 
 
 def apply_notification_settings(slack_webhook, severities):
-    notify.configure(slack_webhook=slack_webhook, severities=severities)
+    # Status display only - deliberately NO notify.configure() here. That set a
+    # process-global webhook, which a DIFFERENT session's run could then fall
+    # back to (one user's Slack receiving another user's alerts). The actual
+    # values now travel per-run: both run buttons pass these same inputs into
+    # run_and_render_stream, which threads them through the graph state.
     return notify_status_html(slack_webhook, severities)
 
 # --------------------------------------------------- streaming run handler
@@ -313,7 +320,8 @@ def _button_updates(phase, active):
     return demo, analyze
 
 
-def _stream_snapshot(state, statuses, durations, phase, report_md=None, error=None, active=None, elapsed=None):
+def _stream_snapshot(state, statuses, durations, phase, report_md=None, error=None, active=None,
+                     elapsed=None, report_path=None):
     """One yield's worth of UI updates, in STREAM_OUTPUTS order:
     [topbar_health, ai_chip_btn, policy_chip_btn, overview_dashboard, overview_tracker,
      per agent: (tracker, display, narrative),
@@ -366,7 +374,9 @@ def _stream_snapshot(state, statuses, durations, phase, report_md=None, error=No
 
     if report_md is not None:
         out.append(report_md)
-        out.append(gr.update(value=REPORT_PATH, interactive=True))
+        # per-run file, not one shared path - two browser sessions must never
+        # download each other's reports
+        out.append(gr.update(value=report_path or REPORT_PATH, interactive=True))
     elif phase == "start":
         out.append("_Report will be generated when the pipeline completes..._")
         out.append(gr.update(interactive=False))
@@ -384,16 +394,26 @@ def _stream_snapshot(state, statuses, durations, phase, report_md=None, error=No
 
 
 def run_and_render_stream(log_file, dockerfile, requirements_file, policy_file,
-                           api_key, model, active="analyze"):
+                           api_key, model, slack_webhook, severities, active="analyze"):
     """Generator event handler: streams the LangGraph run so the tracker and
     each agent's page update live as nodes complete."""
     # Provider is implied by whether a key was pasted - no separate radio to fall out of sync
     # with the key field (see the "remove Auto" addendum for the footgun this replaced).
-    llm.configure(provider="openrouter" if api_key else "auto", api_key=api_key, model=model)
-    log_path = log_file.name if log_file else "data/sample_auth.log"
-    dockerfile_path = dockerfile.name if dockerfile else "data/Dockerfile"
-    req_path = requirements_file.name if requirements_file else "data/requirements.txt"
-    policy_path = policy_file.name if policy_file else "data/policy_excerpt.md"
+    # Both configs travel WITH this run's graph state (per-request), never via
+    # llm.configure()/notify.configure() module globals - those are shared by
+    # every browser session in the process, so a global set here could bill one
+    # user's key (or ping their Slack) for another user's concurrent run.
+    llm_config = ({"provider": "openrouter", "api_key": api_key, "model": model or None}
+                  if api_key else None)
+    sev_list = notify.parse_list(severities)
+    notify_config = {
+        "slack_webhook": (slack_webhook or "").strip() or None,
+        "severities": {s.upper() for s in sev_list} if sev_list else None,
+    }
+    log_path = log_file.name if log_file else "data/testing/quick_demo/sample_auth.log"
+    dockerfile_path = dockerfile.name if dockerfile else "data/testing/quick_demo/Dockerfile"
+    req_path = requirements_file.name if requirements_file else "data/testing/quick_demo/requirements.txt"
+    policy_path = policy_file.name if policy_file else "data/testing/quick_demo/policy_excerpt.md"
 
     t0 = time.time()
     done_at = {}
@@ -404,7 +424,8 @@ def run_and_render_stream(log_file, dockerfile, requirements_file, policy_file,
                             phase="start", active=active, elapsed=0.0)
 
     try:
-        for node, acc_state in stream_pipeline(log_path, dockerfile_path, req_path, policy_path):
+        for node, acc_state in stream_pipeline(log_path, dockerfile_path, req_path, policy_path,
+                                               llm_config=llm_config, notify_config=notify_config):
             now = time.time()
             started = max([t0] + [done_at[p] for p in PIPELINE_PREDECESSORS[node] if p in done_at])
             done_at[node] = now
@@ -421,27 +442,36 @@ def run_and_render_stream(log_file, dockerfile, requirements_file, policy_file,
 
     report = build_report(state)
     os.makedirs("output", exist_ok=True)
-    with open(REPORT_PATH, "w", encoding="utf-8") as f:
+    # Unique per run: a single shared report.md would let two concurrent
+    # sessions download each other's results.
+    report_path = os.path.join("output", f"report_{uuid.uuid4().hex[:8]}.md")
+    with open(report_path, "w", encoding="utf-8") as f:
         f.write(report)
 
     yield _stream_snapshot(state, _node_statuses(done_at, running=False), durations,
-                            phase="final", report_md=report, active=active)
+                            phase="final", report_md=report, active=active,
+                            report_path=report_path)
 
 
-def run_quick_demo_stream(api_key, model):
-    yield from run_and_render_stream(None, None, None, None, api_key, model, active="demo")
+def run_quick_demo_stream(api_key, model, slack_webhook, severities):
+    yield from run_and_render_stream(None, None, None, None, api_key, model,
+                                     slack_webhook, severities, active="demo")
 
 
-def run_evals_and_render():
+def run_evals_and_render(api_key, model):
     """Generator so the button visibly registers the click before the ~10-30s
-    scoring run (which makes several live LLM calls when a key is configured)."""
+    scoring run (which makes several live LLM calls when a key is configured).
+    Takes the Settings key/model directly - an eval run must use what THIS
+    user pasted, not whatever a previous pipeline run left in module state."""
     yield (
         gr.update(value="Running…", interactive=False),
         '<div class="subdued-text" style="margin:8px 0;">Running evals now - this can take up '
         'to ~30s with a live key configured...</div>',
         gr.update(), gr.update(), gr.update(), gr.update(),
     )
-    record = run_all_evals()
+    llm_config = ({"provider": "openrouter", "api_key": api_key, "model": model or None}
+                  if api_key else None)
+    record = run_all_evals(llm_config=llm_config)
     storage_mode = save_eval_run(record)
     history, history_mode = load_eval_history()
     yield (
@@ -806,11 +836,16 @@ with gr.Blocks(title="CyberSec AI Agent") as demo:
     STREAM_OUTPUTS.append(overview_progress)
 
     # Two launch points, both on Overview, both streaming into every page.
-    demo_btn.click(fn=run_quick_demo_stream, inputs=settings_inputs, outputs=STREAM_OUTPUTS)
+    # Notification settings ride along as run inputs (not just the sidebar's
+    # .change() globals) so each run carries its own session's webhook/severities.
+    demo_btn.click(fn=run_quick_demo_stream,
+                   inputs=settings_inputs + notification_settings_inputs,
+                   outputs=STREAM_OUTPUTS)
     analyze_btn.click(
         fn=run_and_render_stream,
         inputs=[file_comps["log"], file_comps["dockerfile"],
-                file_comps["requirements"], file_comps["policy"]] + settings_inputs,
+                file_comps["requirements"], file_comps["policy"]]
+               + settings_inputs + notification_settings_inputs,
         outputs=STREAM_OUTPUTS,
     )
 
@@ -832,7 +867,11 @@ with gr.Blocks(title="CyberSec AI Agent") as demo:
     for comp in notification_settings_inputs:
         comp.change(fn=apply_notification_settings, inputs=notification_settings_inputs, outputs=notify_status)
 
-    demo.load(fn=lambda: deploy_key_hint_html(IS_DEPLOYED, llm.current_provider()), outputs=deploy_key_hint)
+    def _refresh_deploy_key_hint(api_key):
+        return deploy_key_hint_html(IS_DEPLOYED, bool(api_key))
+
+    demo.load(fn=lambda: _refresh_deploy_key_hint(None), outputs=deploy_key_hint)
+    api_key_input.change(fn=_refresh_deploy_key_hint, inputs=api_key_input, outputs=deploy_key_hint)
 
     def _initial_model_choices():
         models = llm.list_openrouter_models()
@@ -843,6 +882,7 @@ with gr.Blocks(title="CyberSec AI Agent") as demo:
 
     eval_run_btn.click(
         fn=run_evals_and_render,
+        inputs=settings_inputs,
         outputs=[eval_run_btn, eval_progress, eval_storage_status, eval_tiles, eval_cases, eval_history],
     )
 

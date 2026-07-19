@@ -1,0 +1,13 @@
+# Vulnerable: privileged container + host network access (AVD-KSV-0001 class).
+apiVersion: v1
+kind: Pod
+metadata:
+  name: vulnerable-pod
+spec:
+  hostNetwork: true
+  containers:
+    - name: app
+      image: nginx:1.21
+      securityContext:
+        privileged: true
+        allowPrivilegeEscalation: true

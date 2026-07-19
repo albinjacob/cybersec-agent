@@ -21,8 +21,8 @@ the reasoning live.
 ## What it does — the 60-second story
 
 The bundled sample data tells a concrete story: **an attacker is brute-forcing SSH and
-scanning ports (`data/sample_auth.log`), and a vulnerable container image is about to ship
-(`data/Dockerfile` + `data/requirements.txt`).** Run the pipeline and watch five agents
+scanning ports (`data/testing/quick_demo/sample_auth.log`), and a vulnerable container image is about to ship
+(`data/testing/quick_demo/Dockerfile` + `data/testing/quick_demo/requirements.txt`).** Run the pipeline and watch five agents
 catch it, correlate CVEs, map the gaps to NIST controls, and hand back an action plan.
 
 ```
@@ -130,7 +130,7 @@ cybersec-agent/
 ├── orchestrator.py      # LangGraph StateGraph wiring the 5 agents + Notify
 ├── report_builder.py    # aggregates agent outputs into markdown
 ├── ui_render.py          # presentation layer for the Gradio UI (no gradio imports)
-├── requirements.txt     # app dependencies  (NOT data/requirements.txt)
+├── requirements.txt     # app dependencies  (NOT data/testing/quick_demo/requirements.txt)
 ├── agents/              # the five agents + notify (action stage) + shared llm/embeddings helpers
 ├── data/                # sample inputs + threat feed + NIST catalog + policy index
 │   └── requirements.txt #   ⚠ intentionally vulnerable SAMPLE the scanner analyzes

@@ -13,3 +13,8 @@ bin/
 
 # Local eval run history - only used when Supabase isn't configured
 evals/results/history.jsonl
+
+# Per-provider embedding cache for policy RAG - regenerated on demand via
+# the "Rebuild Index" button, not committed source data
+data/knowledgebase/policy_index_meta.*.json
+data/knowledgebase/policy_index_vectors.*.npy

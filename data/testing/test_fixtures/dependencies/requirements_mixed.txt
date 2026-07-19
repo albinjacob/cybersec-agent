@@ -1,0 +1,3 @@
+# Realistic partial-remediation case: one patched pin, one still vulnerable.
+django==4.2.15
+pyyaml==5.1

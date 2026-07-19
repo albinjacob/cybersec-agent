@@ -5,8 +5,10 @@ Takes the combined findings from Log Monitor, Threat Intel, and Vulnerability
 Scanner, and produces a prioritized, step-by-step remediation plan.
 """
 
+import json
+
 from . import council
-from .llm import reason, get_last_fallback_reason
+from .llm import UNTRUSTED_DATA_NOTE, fence_untrusted, reason
 
 PLAYBOOKS = {
     "ssh_bruteforce": [
@@ -81,15 +83,25 @@ def build_plan(log_findings, vuln_findings):
     return plan
 
 
-def _attach_council(plan):
+MAX_COUNCILS_PER_RUN = 3
+
+
+def _attach_council(plan, llm_config=None):
     """Second-opinion + judge review for CRITICAL items only - the added
     latency/cost of a 3-call council is bounded to the findings that actually
-    warrant it. Non-CRITICAL items get council=None; unaffected otherwise."""
+    warrant it, and further capped at MAX_COUNCILS_PER_RUN per run (a log with
+    dozens of brute-forcing IPs must not fan out into dozens×3 paid calls).
+    Non-CRITICAL items get council=None; capped-out CRITICALs get a labeled
+    "skipped-cap" so the UI/report can say why no council ran for them."""
+    councils_run = 0
     for item in plan:
-        if item["severity"] == "CRITICAL":
-            item["council"] = council.run_council(item["issue"], item["steps"])
-        else:
+        if item["severity"] != "CRITICAL":
             item["council"] = None
+        elif councils_run >= MAX_COUNCILS_PER_RUN:
+            item["council"] = {"mode": "skipped-cap"}
+        else:
+            item["council"] = council.run_council(item["issue"], item["steps"], llm_config=llm_config)
+            councils_run += 1
     return plan
 
 
@@ -102,20 +114,27 @@ def _mock_summary(plan):
     return "\n".join(lines)
 
 
-def run(log_findings, vuln_findings):
+def run(log_findings, vuln_findings, llm_config: dict | None = None):
     plan = build_plan(log_findings, vuln_findings)
-    plan = _attach_council(plan)
     system_prompt = (
         "You are an incident response lead. Given a prioritized list of issues "
         "and remediation steps, write a clear, executive-readable action plan, "
         "grouping related issues and calling out anything time-critical."
+        + UNTRUSTED_DATA_NOTE
     )
-    user_prompt = f"Plan items:\n{plan}"
-    summary, mode = reason(system_prompt, user_prompt, mock_fn=lambda: _mock_summary(plan))
+    # Summary is generated BEFORE councils attach, from selected fields only -
+    # re-sending every council opinion/verdict into this call was pure token
+    # waste and invited the summarizer to parrot the council instead of the plan.
+    compact = [{"issue": p["issue"], "severity": p["severity"], "steps": p["steps"]} for p in plan]
+    user_prompt = fence_untrusted(json.dumps(compact, indent=1), tag="plan_items")
+    summary, mode, fallback_reason = reason(system_prompt, user_prompt,
+                                            mock_fn=lambda: _mock_summary(plan),
+                                            config=llm_config)
+    plan = _attach_council(plan, llm_config=llm_config)
     return {
         "agent": "incident_response",
         "plan": plan,
         "summary": summary,
         "reasoning_mode": mode,
-        "reasoning_fallback_reason": get_last_fallback_reason() if mode == "mock" else None,
+        "reasoning_fallback_reason": fallback_reason,
     }

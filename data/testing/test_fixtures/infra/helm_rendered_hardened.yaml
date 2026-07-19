@@ -1,0 +1,45 @@
+# Output of `helm template mychart > rendered.yaml` run locally - fully
+# resolved plain Kubernetes YAML, no Go templating syntax left. Uploading
+# this (not the raw chart) lets Trivy scan it via the Kubernetes manifest
+# path rather than needing the full chart directory.
+---
+# Source: mychart/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mychart
+  namespace: workloads
+  labels:
+    app: mychart
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: mychart
+  template:
+    metadata:
+      labels:
+        app: mychart
+    spec:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: app
+          image: nginx:1.21
+          securityContext:
+            privileged: false
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+            requests:
+              cpu: "250m"
+              memory: "128Mi"

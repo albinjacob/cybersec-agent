@@ -21,6 +21,12 @@ class PipelineState(TypedDict, total=False):
     dockerfile_path: str
     requirements_path: str
     policy_path: str
+    # Per-run BYOK config, threaded from the UI handler through the graph into
+    # each agent - NOT module globals, which are shared across every browser
+    # session in one process (one user's key/webhook must never serve another
+    # user's concurrent run).
+    llm_config: dict
+    notify_config: dict
     log_monitor: dict
     vuln_scanner: dict
     threat_intel: dict
@@ -30,12 +36,13 @@ class PipelineState(TypedDict, total=False):
 
 
 def node_log_monitor(state):
-    result = log_monitor.run(state["log_path"])
+    result = log_monitor.run(state["log_path"], llm_config=state.get("llm_config"))
     return {"log_monitor": result}
 
 
 def node_vuln_scanner(state):
-    result = vuln_scanner.run(state["dockerfile_path"], state["requirements_path"])
+    result = vuln_scanner.run(state["dockerfile_path"], state["requirements_path"],
+                              llm_config=state.get("llm_config"))
     return {"vuln_scanner": result}
 
 
@@ -45,6 +52,7 @@ def node_threat_intel(state):
     result = threat_intel.run(
         state["log_monitor"]["findings"],
         dependency_names=state["vuln_scanner"]["dependency_names"],
+        llm_config=state.get("llm_config"),
     )
     return {"threat_intel": result}
 
@@ -53,13 +61,15 @@ def node_incident_response(state):
     result = incident_response.run(
         state["log_monitor"]["findings"],
         state["vuln_scanner"]["findings"],
+        llm_config=state.get("llm_config"),
     )
     return {"incident_response": result}
 
 
 def node_policy_checker(state):
     all_findings = state["log_monitor"]["findings"] + state["vuln_scanner"]["findings"]
-    result = policy_checker.run(state["policy_path"], all_findings)
+    result = policy_checker.run(state["policy_path"], all_findings,
+                                llm_config=state.get("llm_config"))
     return {"policy_checker": result}
 
 
@@ -92,21 +102,30 @@ def build_graph():
     return graph.compile()
 
 
-def _initial_state(log_path, dockerfile_path, requirements_path, policy_path):
-    return {
+def _initial_state(log_path, dockerfile_path, requirements_path, policy_path,
+                   llm_config=None, notify_config=None):
+    state = {
         "log_path": log_path,
         "dockerfile_path": dockerfile_path,
         "requirements_path": requirements_path,
         "policy_path": policy_path,
     }
+    if llm_config:
+        state["llm_config"] = llm_config
+    if notify_config:
+        state["notify_config"] = notify_config
+    return state
 
 
-def run_pipeline(log_path, dockerfile_path, requirements_path, policy_path):
+def run_pipeline(log_path, dockerfile_path, requirements_path, policy_path,
+                 llm_config=None, notify_config=None):
     app = build_graph()
-    return app.invoke(_initial_state(log_path, dockerfile_path, requirements_path, policy_path))
+    return app.invoke(_initial_state(log_path, dockerfile_path, requirements_path, policy_path,
+                                     llm_config, notify_config))
 
 
-def stream_pipeline(log_path, dockerfile_path, requirements_path, policy_path):
+def stream_pipeline(log_path, dockerfile_path, requirements_path, policy_path,
+                    llm_config=None, notify_config=None):
     """
     Generator variant of run_pipeline for live UIs: yields
     (node_name, accumulated_state) the moment each agent node completes,
@@ -116,7 +135,8 @@ def stream_pipeline(log_path, dockerfile_path, requirements_path, policy_path):
     equivalent to run_pipeline()'s return value.
     """
     app = build_graph()
-    state = _initial_state(log_path, dockerfile_path, requirements_path, policy_path)
+    state = _initial_state(log_path, dockerfile_path, requirements_path, policy_path,
+                           llm_config, notify_config)
     for chunk in app.stream(state):
         for node_name, update in chunk.items():
             state.update(update)
