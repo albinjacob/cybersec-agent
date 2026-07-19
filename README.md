@@ -135,6 +135,7 @@ cybersec-agent/
 ├── data/
 │   ├── testing/quick_demo/     # bundled sample inputs (incl. an intentionally vulnerable requirements.txt)
 │   ├── testing/test_fixtures/  # 50-file set for manually testing "Analyze Your Own Files"
+│   │                           # (or run scripts/run_fixture_suite.py for a local CLI pass over all 50)
 │   └── knowledgebase/          # CVE dataset, NIST 800-53 catalog, policy embedding cache
 ├── output/              # report.md (kept as a demo backup) — regenerated each run
 ├── scripts/             # one-off data-prep (fetch/flatten the NIST 800-53 catalog)
