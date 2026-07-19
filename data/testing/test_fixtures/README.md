@@ -11,6 +11,25 @@ combination testing isn't practical — prefer one pass uploading each file indi
 its expected result, plus a few deliberate multi-slot combos (all-clean, all-adversarial, one
 boundary-focused run).
 
+## Automated local testing (not a substitute for the UI check above)
+
+`scripts/run_fixture_suite.py` runs all 50 files through the pipeline directly (bypassing Gradio
+entirely) and writes one consolidated pass/fail report - useful for confirming nothing regressed
+after a code change, without re-uploading 50 files by hand. This is a **local/CLI-only** tool: it
+doesn't drive the browser, so it can't replace actually uploading a file through "Analyze Your Own
+Files" and looking at the rendered result - it only checks that the underlying agents still return
+the right structured findings.
+
+```bash
+python scripts/run_fixture_suite.py                    # development mode (default): mock
+                                                         # reasoning, no API key needed, fast
+python scripts/run_fixture_suite.py --mode production   # requires OPENROUTER_API_KEY; also
+                                                         # exercises live narration + Model Council
+```
+
+Report written to `output/fixture_test_report.md` (one table per category, plus a "Failures in
+detail" section for anything that didn't match its expected result above).
+
 ## `log/` — 13 files (`agents/log_monitor.py`)
 
 | File | Expected result |
