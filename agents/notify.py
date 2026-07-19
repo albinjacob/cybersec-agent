@@ -104,6 +104,15 @@ def _format_message(findings, plan, risk_level):
 
 
 def _send_slack(webhook, text):
+    # The field promises "Slack webhook", so hold it to that: an arbitrary
+    # user-supplied URL POSTed from the server is a server-side request
+    # forgery primitive (internal endpoints, cloud metadata services) with
+    # the findings payload attached. The failure surfaces through the same
+    # per-channel "failed" status any other send error does.
+    from urllib.parse import urlparse
+    parsed = urlparse(webhook)
+    if parsed.scheme != "https" or parsed.hostname != "hooks.slack.com":
+        raise ValueError("Webhook rejected: must be an https://hooks.slack.com/... URL")
     import requests
     resp = requests.post(webhook, json={"text": text}, timeout=8)
     resp.raise_for_status()
@@ -114,7 +123,12 @@ def run(state):
     vuln_findings = state["vuln_scanner"]["findings"]
     plan = state["incident_response"]["plan"]
 
-    severities = _active_severities()
+    # Per-run config carried in the graph state wins over the session-global
+    # configure() override - module state is shared by every browser session
+    # in the process, so one user's webhook must never receive another user's
+    # alerts (same reasoning as llm.reason()'s per-request config).
+    run_cfg = state.get("notify_config") or {}
+    severities = run_cfg.get("severities") or _active_severities()
     findings = _triggering_findings(log_findings, vuln_findings, severities)
 
     base = {
@@ -132,7 +146,7 @@ def run(state):
         }
 
     worst = findings[0]["severity"]
-    webhook = _active_slack_webhook()
+    webhook = run_cfg.get("slack_webhook") or _active_slack_webhook()
 
     if not webhook:
         return {

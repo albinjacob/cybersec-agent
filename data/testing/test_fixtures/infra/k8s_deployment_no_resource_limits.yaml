@@ -1,0 +1,18 @@
+# Vulnerable: no resource limits set on the container (AVD-KSV-0018).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: unbounded-deployment
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: unbounded
+  template:
+    metadata:
+      labels:
+        app: unbounded
+    spec:
+      containers:
+        - name: app
+          image: nginx:1.21

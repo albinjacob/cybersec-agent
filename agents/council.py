@@ -12,7 +12,9 @@ whenever no API key is configured - there is no meaningful "council" over a
 mock response.
 """
 
-from .llm import reason, current_provider
+import re
+
+from .llm import DEFAULT_MODELS, current_provider, reason
 
 # A model distinct from DEFAULT_MODELS/whatever the user configured, per
 # provider, so the two opinions are asked by genuinely different models
@@ -52,31 +54,54 @@ def _judge_prompt(issue_text, opinion_a, model_a, opinion_b, model_b):
     )
 
 
+_AGREEMENT_RE = re.compile(r"[\s*#>_`\-]*(AGREE|DISAGREE)\b", re.IGNORECASE)
+
+
 def _parse_agreement(judge_text):
-    return judge_text.strip().upper().startswith("AGREE")
+    """Returns "agree", "disagree", or "unparseable". The judge is asked to
+    lead with exactly one word, but models decorate ("**AGREE**", "I AGREE",
+    a preamble sentence) - so match the verdict word itself, tolerant of
+    leading markdown/punctuation, and say so explicitly when neither word can
+    be found rather than silently defaulting to disagree."""
+    m = _AGREEMENT_RE.match(judge_text or "")
+    if not m:
+        return "unparseable"
+    return m.group(1).lower()
 
 
-def run_council(issue_text, steps):
+def run_council(issue_text, steps, llm_config: dict | None = None):
     """Returns a dict with at least a "mode" key. mode == "skipped-mock" means
-    no live key is configured, so no council was run."""
-    provider = current_provider()
+    no live key is configured, so no council was run. `llm_config` is the
+    per-request BYOK dict threaded down from the UI handler (see llm.reason)."""
+    provider = current_provider(llm_config)
     if provider is None:
         return {"mode": "skipped-mock"}
 
+    model_a = ((llm_config or {}).get("model")) or DEFAULT_MODELS.get(provider, "default")
+    second_model = SECOND_OPINION_MODELS.get(provider)
+    if second_model == model_a:
+        # Same model twice isn't a second opinion. Fall back to a different
+        # catalog entry so the two opinions stay genuinely independent.
+        second_model = {
+            "anthropic": "claude-sonnet-5",
+            "openai": "gpt-4o-mini",
+            "openrouter": "openai/gpt-4o-mini",
+        }.get(provider, second_model)
+
     user_prompt = _opinion_prompt(issue_text, steps)
-    opinion_a, mode_a = reason(_OPINION_SYSTEM_PROMPT, user_prompt)
+    opinion_a, mode_a, _ = reason(_OPINION_SYSTEM_PROMPT, user_prompt, config=llm_config)
     if mode_a == "mock":
         return {"mode": "skipped-mock"}
 
-    model_a = provider  # the model actually used isn't returned by reason(); track by provider label
-    second_model = SECOND_OPINION_MODELS.get(provider)
-    opinion_b, mode_b = reason(_OPINION_SYSTEM_PROMPT, user_prompt, model_override=second_model)
+    opinion_b, mode_b, _ = reason(_OPINION_SYSTEM_PROMPT, user_prompt,
+                                  model_override=second_model, config=llm_config)
     if mode_b == "mock":
         return {"mode": "skipped-mock"}
 
-    judge_text, judge_mode = reason(
+    judge_text, judge_mode, _ = reason(
         _JUDGE_SYSTEM_PROMPT,
-        _judge_prompt(issue_text, opinion_a, "primary model", opinion_b, second_model),
+        _judge_prompt(issue_text, opinion_a, model_a, opinion_b, second_model),
+        config=llm_config,
     )
     if judge_mode == "mock":
         return {"mode": "skipped-mock"}
@@ -84,7 +109,7 @@ def run_council(issue_text, steps):
     return {
         "mode": "live",
         "opinion_a": opinion_a,
-        "model_a": "primary (your configured model)",
+        "model_a": model_a,
         "opinion_b": opinion_b,
         "model_b": second_model,
         "judge_verdict": judge_text,

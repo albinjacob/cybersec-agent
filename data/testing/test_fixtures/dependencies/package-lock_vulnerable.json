@@ -1,0 +1,35 @@
+{
+  "name": "test-fixture",
+  "version": "1.0.0",
+  "lockfileVersion": 3,
+  "requires": true,
+  "packages": {
+    "": {
+      "name": "test-fixture",
+      "version": "1.0.0",
+      "dependencies": { "lodash": "4.17.15", "minimist": "1.2.5" }
+    },
+    "node_modules/lodash": {
+      "version": "4.17.15",
+      "resolved": "https://registry.npmjs.org/lodash/-/lodash-4.17.15.tgz",
+      "integrity": "sha512-8xOcRHvCjnocdS5cpwXQXVzmmh5e5+saE2QGoeQmbKmRS6J3VQppPOIt0MnmE+4xlIfIOsJZzD7CBFAy5KEmg=="
+    },
+    "node_modules/minimist": {
+      "version": "1.2.5",
+      "resolved": "https://registry.npmjs.org/minimist/-/minimist-1.2.5.tgz",
+      "integrity": "sha512-FM9nNUYrRBAELZQT3xeZQ7fmMOBuniByVoxnhtq7bH2WA6t+A79dEZidZ+jSjS0/9SS4qmczxr7pQVMBQmtq7g=="
+    }
+  },
+  "dependencies": {
+    "lodash": {
+      "version": "4.17.15",
+      "resolved": "https://registry.npmjs.org/lodash/-/lodash-4.17.15.tgz",
+      "integrity": "sha512-8xOcRHvCjnocdS5cpwXQXVzmmh5e5+saE2QGoeQmbKmRS6J3VQppPOIt0MnmE+4xlIfIOsJZzD7CBFAy5KEmg=="
+    },
+    "minimist": {
+      "version": "1.2.5",
+      "resolved": "https://registry.npmjs.org/minimist/-/minimist-1.2.5.tgz",
+      "integrity": "sha512-FM9nNUYrRBAELZQT3xeZQ7fmMOBuniByVoxnhtq7bH2WA6t+A79dEZidZ+jSjS0/9SS4qmczxr7pQVMBQmtq7g=="
+    }
+  }
+}

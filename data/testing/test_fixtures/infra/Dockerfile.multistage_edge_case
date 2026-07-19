@@ -1,0 +1,21 @@
+# Multi-stage edge case: the build stage sets a non-root USER, but the final
+# (shipped) stage doesn't re-declare it, so the actual running image is root.
+# Verified empirically: Trivy's DS-0002 ("no USER") check does NOT catch this
+# - it appears satisfied by ANY stage in the file declaring USER, not
+# specifically the final stage. So uploading this produces only DS-0026
+# (missing HEALTHCHECK), not DS-0002, even though the shipped image genuinely
+# runs as root. This is a real Trivy blind spot for multi-stage builds worth
+# knowing about, not a fixture defect - a quick read of the file (or of
+# Trivy's own findings) can wrongly suggest this Dockerfile is safe on the
+# root-user front.
+FROM ubuntu:20.04 AS build
+RUN useradd -m builder
+USER builder
+WORKDIR /build
+COPY . .
+RUN echo "build step" > out.txt
+
+FROM ubuntu:20.04
+WORKDIR /app
+COPY --from=build /build/out.txt .
+CMD ["cat", "out.txt"]

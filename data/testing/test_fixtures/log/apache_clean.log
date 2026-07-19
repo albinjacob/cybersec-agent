@@ -1,0 +1,2 @@
+198.51.100.44 - - [18/Jul/2026:03:25:07 -0400] "GET /index.html HTTP/1.1" 200 4521 "https://www.example.com/" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15"
+198.51.100.44 - - [18/Jul/2026:03:25:09 -0400] "GET /favicon.ico HTTP/1.1" 200 - "https://www.example.com/" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15"

@@ -7,16 +7,20 @@ up relevant CVEs / known attack patterns and summarizes exposure.
 Queries the live NVD REST API v2.0
 (https://services.nvd.nist.gov/rest/json/cves/2.0 - public, no API key
 required) for each derived keyword. Falls back automatically to the
-bundled data/cve_dataset.json if the API is unreachable, times out, or hits
+bundled data/knowledgebase/cve_dataset.json if the API is unreachable, times out, or hits
 the unauthenticated rate limit (5 requests/30s), so a live demo never
 breaks on a flaky connection. `feed_mode` on the returned dict records which
 path actually ran ("live-nvd" or "local-fallback").
 """
 
 import json
-from .llm import reason, get_last_fallback_reason
+import logging
 
-DATASET_PATH = "data/cve_dataset.json"
+from .llm import UNTRUSTED_DATA_NOTE, fence_untrusted, reason
+
+log = logging.getLogger(__name__)
+
+DATASET_PATH = "data/knowledgebase/cve_dataset.json"
 NVD_API_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 NVD_TIMEOUT = 8
 NVD_RESULTS_PER_KEYWORD = 3
@@ -24,7 +28,7 @@ NVD_MAX_KEYWORDS = 5  # matches the unauthenticated 5-req/30s NVD rate limit
 
 
 def load_local_feed(path: str = DATASET_PATH):
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -97,7 +101,7 @@ def _mock_summary(matches):
     return "\n".join(lines)
 
 
-def run(log_findings, dependency_names=None):
+def run(log_findings, dependency_names=None, llm_config: dict | None = None):
     dep_keywords = [d.lower() for d in (dependency_names or [])]
     log_keywords = set()
     for f in log_findings:
@@ -118,6 +122,7 @@ def run(log_findings, dependency_names=None):
     if live_matches is not None:
         matches, feed_mode, feed_fallback_reason = live_matches, "live-nvd", None
     else:
+        log.warning("NVD lookup fell back to the local dataset: %s", live_error)
         matches = lookup_local(keyword_list, load_local_feed())
         feed_mode, feed_fallback_reason = "local-fallback", live_error
 
@@ -132,16 +137,20 @@ def run(log_findings, dependency_names=None):
     system_prompt = (
         "You are a threat intelligence analyst. Given matched CVE/threat-pattern "
         "records, summarize the organization's real exposure and which findings "
-        "each CVE relates to, ordered by severity."
+        "each CVE relates to, ordered by severity." + UNTRUSTED_DATA_NOTE
     )
-    user_prompt = f"Matches:\n{unique_matches}"
-    summary, mode = reason(system_prompt, user_prompt, mock_fn=lambda: _mock_summary(unique_matches))
+    compact = [{"cve_id": m["cve_id"], "severity": m["severity"], "summary": m["summary"]}
+               for m in unique_matches]
+    user_prompt = fence_untrusted(json.dumps(compact, indent=1), tag="cve_matches")
+    summary, mode, fallback_reason = reason(system_prompt, user_prompt,
+                                            mock_fn=lambda: _mock_summary(unique_matches),
+                                            config=llm_config)
     return {
         "agent": "threat_intel",
         "matches": unique_matches,
         "summary": summary,
         "reasoning_mode": mode,
-        "reasoning_fallback_reason": get_last_fallback_reason() if mode == "mock" else None,
+        "reasoning_fallback_reason": fallback_reason,
         "feed_mode": feed_mode,
         "feed_fallback_reason": feed_fallback_reason,
     }

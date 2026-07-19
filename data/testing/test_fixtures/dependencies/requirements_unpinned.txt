@@ -1,0 +1,6 @@
+# Loose version ranges - the app's own parse_requirements() regex only
+# matches strict `name==version` pins, so these are silently excluded from
+# dependency_names even though Trivy itself may still scan the raw file.
+flask>=2.0
+requests>=2.20
+pyyaml~=6.0

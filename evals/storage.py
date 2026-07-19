@@ -24,8 +24,11 @@ client-exposed code and end-user JWT verification, respectively) have no role he
 """
 
 import json
+import logging
 import os
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_SECRET_KEY")
@@ -55,8 +58,10 @@ def save_run(record):
             )
             resp.raise_for_status()
             return "supabase-live"
-        except Exception:
-            pass  # fall through to local storage so a run is never lost
+        except Exception as e:
+            # fall through to local storage so a run is never lost - but leave
+            # a trace, or a misconfigured URL/key is silently invisible forever
+            log.warning("Supabase save failed, falling back to local history: %s", e)
     _append_local(record)
     return "local-fallback"
 
@@ -84,8 +89,8 @@ def load_history(limit=20):
             resp.raise_for_status()
             rows = resp.json()
             return [r["record"] for r in rows], "supabase-live"
-        except Exception:
-            pass  # fall through to local history
+        except Exception as e:
+            log.warning("Supabase load failed, falling back to local history: %s", e)
     return _load_local(limit), "local-fallback"
 
 

@@ -1,7 +1,7 @@
 """
 One-time (or rarely-run) data-prep script: fetches the official NIST SP
 800-53 Rev 5 control catalog (OSCAL JSON format, public, no auth) and
-flattens it into data/nist_800_53_catalog.json - a simple list of
+flattens it into data/knowledgebase/nist_800_53_catalog.json - a simple list of
 {control_id, family, family_title, title, statement} chunks that
 agents/policy_checker.py embeds and searches against.
 
@@ -9,7 +9,7 @@ This is NOT run at pipeline runtime - NIST revises 800-53 roughly once every
 several years (Rev 4 -> 2013, Rev 5 -> 2020, Rev 5.1 -> 2023), so re-fetching
 the catalog on every app run would be pointless. Re-run this script by hand
 only when NIST ships a new revision. The separate "Rebuild Index" button in
-the app re-embeds the existing data/nist_800_53_catalog.json file - it does
+the app re-embeds the existing data/knowledgebase/nist_800_53_catalog.json file - it does
 not re-fetch from NIST.
 
 Usage:
@@ -23,7 +23,7 @@ CATALOG_URL = (
     "https://raw.githubusercontent.com/usnistgov/oscal-content/main/"
     "nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_catalog.json"
 )
-OUTPUT_PATH = "data/nist_800_53_catalog.json"
+OUTPUT_PATH = "data/knowledgebase/nist_800_53_catalog.json"
 
 PARAM_PLACEHOLDER_RE = re.compile(r"\{\{\s*insert:\s*param,\s*[\w.-]+\s*\}\}")
 

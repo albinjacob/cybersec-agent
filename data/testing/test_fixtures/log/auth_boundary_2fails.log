@@ -1,0 +1,5 @@
+Jul 18 06:01:00 web01 sshd[22110]: Failed password for root from 203.0.113.19 port 40011 ssh2
+Jul 18 06:01:02 web01 sshd[22111]: Failed password for root from 203.0.113.19 port 40013 ssh2
+Jul 18 06:01:10 web01 sshd[22112]: Accepted publickey for deploy from 198.51.100.22 port 40899 ssh2
+Jul 18 06:05:00 web01 sudo[22120]:   deploy : TTY=pts/0 ; PWD=/var/www/html ; USER=root ; COMMAND=/bin/chmod 777 /var/www/html/cache
+Jul 18 06:10:00 web01 CRON[22130]: (root) CMD (/usr/local/bin/backup.sh)

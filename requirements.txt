@@ -1,5 +1,5 @@
 # Cyber Security AI Agent — application dependencies.
-# (Note: data/requirements.txt is NOT this — it is an intentionally vulnerable
+# (Note: data/testing/quick_demo/requirements.txt is NOT this — it is an intentionally vulnerable
 #  sample file that the Vulnerability Scanner agent analyzes.)
 #
 #   python -m pip install -r requirements.txt

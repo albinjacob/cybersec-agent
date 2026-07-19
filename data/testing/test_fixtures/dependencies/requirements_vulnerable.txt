@@ -1,0 +1,4 @@
+# pyyaml==5.1 -> CVE-2020-14343 (arbitrary code execution via FullLoader)
+# django==2.0.1 -> CVE-2018-6188 / CVE-2018-7537
+pyyaml==5.1
+django==2.0.1

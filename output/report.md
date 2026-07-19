@@ -1,21 +1,15 @@
 # Cybersecurity AI Agent - Incident & Compliance Report
-_Generated 2026-07-18 19:52 UTC_
+_Generated 2026-07-19 03:58 UTC_
 
 ## Executive Summary
-**Overall risk: CRITICAL** — 44 issue(s) detected across logs and dependencies (7 critical, 15 high, 19 medium, 3 low).
+**Overall risk: CRITICAL** — 38 issue(s) detected across logs and dependencies (6 critical, 13 high, 16 medium, 3 low).
 Start with **section 4 (Incident Response — Action Plan)** for prioritized remediation, then **section 5 (Policy Checker)** for the affected compliance controls.
 _Reasoning mode per agent: {'log_monitor': 'mock', 'threat_intel': 'mock', 'vuln_scanner': 'mock', 'incident_response': 'mock', 'policy_checker': 'mock'}_
 
 ---
 ## 1. Log Monitor Agent
 Log Monitor Agent - detected activity summary:
-- [CRITICAL] ssh_bruteforce: 9 failed SSH logins from 185.220.101.7 targeting privileged accounts ['admin', 'root']
-- [HIGH] privileged_password_login: Password-based (not key-based) login for privileged user 'admin' from 185.220.101.7
-- [HIGH] port_scan: Port scan from 45.155.204.13 against ports ['22', '3389', '6379', '8080', '27017']
-- [MEDIUM] recon_probe: Reconnaissance probe against '/../../../../etc/passwd' (status 400)
-- [MEDIUM] recon_probe: Reconnaissance probe against '/wp-admin/setup-config.php' (status 404)
-- [MEDIUM] recon_probe: Reconnaissance probe against '/.env' (status 404)
-- [MEDIUM] insecure_permission_change: User 'admin' set world-writable permissions (chmod 777) on a web-accessible path
+- [MEDIUM] insecure_permission_change: User 'deploy' set world-writable permissions (chmod 777) on a web-accessible path
 
 ## 2. Threat Intelligence Agent
 Threat Intelligence Agent - exposure summary:
@@ -78,237 +72,194 @@ Vulnerability Scanner Agent - scan results:
 ## 4. Incident Response Agent - Action Plan
 Incident Response Agent - prioritized action plan:
 
-1. [CRITICAL] 9 failed SSH logins from 185.220.101.7 targeting privileged accounts ['admin', 'root']  (from log_monitor)
-   - Block source IP at the firewall/WAF immediately.
-   - Force password reset + enforce key-based auth with MFA for the targeted accounts.
-   - Enable fail2ban or equivalent rate-limiting on sshd.
-   - Review auth logs for any successful login from the same source in the surrounding 24h window.
-
-2. [CRITICAL] django==2.0.1: Django: crafted email address allows account takeover  (from vuln_scanner)
+1. [CRITICAL] django==2.0.1: Django: crafted email address allows account takeover  (from vuln_scanner)
    - Upgrade the flagged package to the patched version referenced in the CVE.
    - Re-run the vulnerability scan post-upgrade to confirm remediation.
    - Add dependency scanning as a CI gate (e.g. pip-audit, Trivy) to prevent regressions.
 
-3. [CRITICAL] django==2.0.1: django: potential SQL injection via StringAgg(delimiter)  (from vuln_scanner)
+2. [CRITICAL] django==2.0.1: django: potential SQL injection via StringAgg(delimiter)  (from vuln_scanner)
    - Upgrade the flagged package to the patched version referenced in the CVE.
    - Re-run the vulnerability scan post-upgrade to confirm remediation.
    - Add dependency scanning as a CI gate (e.g. pip-audit, Trivy) to prevent regressions.
 
-4. [CRITICAL] django==2.0.1: django: Django SQL injection  (from vuln_scanner)
+3. [CRITICAL] django==2.0.1: django: Django SQL injection  (from vuln_scanner)
    - Upgrade the flagged package to the patched version referenced in the CVE.
    - Re-run the vulnerability scan post-upgrade to confirm remediation.
    - Add dependency scanning as a CI gate (e.g. pip-audit, Trivy) to prevent regressions.
 
-5. [CRITICAL] pyyaml==5.1: PyYAML: command execution through python/object/apply constructor in FullLoader  (from vuln_scanner)
+4. [CRITICAL] pyyaml==5.1: PyYAML: command execution through python/object/apply constructor in FullLoader  (from vuln_scanner)
    - Upgrade the flagged package to the patched version referenced in the CVE.
    - Re-run the vulnerability scan post-upgrade to confirm remediation.
    - Add dependency scanning as a CI gate (e.g. pip-audit, Trivy) to prevent regressions.
 
-6. [CRITICAL] pyyaml==5.1: PyYAML: incomplete fix for CVE-2020-1747  (from vuln_scanner)
+5. [CRITICAL] pyyaml==5.1: PyYAML: incomplete fix for CVE-2020-1747  (from vuln_scanner)
    - Upgrade the flagged package to the patched version referenced in the CVE.
    - Re-run the vulnerability scan post-upgrade to confirm remediation.
    - Add dependency scanning as a CI gate (e.g. pip-audit, Trivy) to prevent regressions.
 
-7. [CRITICAL] pyyaml==5.1: PyYAML: arbitrary command execution through python/object/new when FullLoader is used  (from vuln_scanner)
+6. [CRITICAL] pyyaml==5.1: PyYAML: arbitrary command execution through python/object/new when FullLoader is used  (from vuln_scanner)
    - Upgrade the flagged package to the patched version referenced in the CVE.
    - Re-run the vulnerability scan post-upgrade to confirm remediation.
    - Add dependency scanning as a CI gate (e.g. pip-audit, Trivy) to prevent regressions.
 
-8. [HIGH] Password-based (not key-based) login for privileged user 'admin' from 185.220.101.7  (from log_monitor)
-   - Disable password authentication for privileged accounts; require SSH keys + MFA.
-   - Rotate credentials for the affected account.
-   - Audit sudoers / group membership for the account for unexpected grants.
-
-9. [HIGH] Port scan from 45.155.204.13 against ports ['22', '3389', '6379', '8080', '27017']  (from log_monitor)
-   - Confirm firewall default-deny is enforced on all non-required ports.
-   - Add the scanning source IP to a watchlist / threat-intel blocklist.
-   - Verify no scanned service (e.g. Redis 6379, MongoDB 27017) is unintentionally exposed to the internet.
-
-10. [HIGH] Image user should not be 'root': Specify at least 1 USER command in Dockerfile with non-root user as argument  (from vuln_scanner)
+7. [HIGH] Image user should not be 'root': Specify at least 1 USER command in Dockerfile with non-root user as argument  (from vuln_scanner)
    - Investigate and remediate per standard IR procedure.
 
-11. [HIGH] 'apt-get' missing '--no-install-recommends': '--no-install-recommends' flag is missed: 'apt-get update && apt-get install -y curl'  (from vuln_scanner)
+8. [HIGH] 'apt-get' missing '--no-install-recommends': '--no-install-recommends' flag is missed: 'apt-get update && apt-get install -y curl'  (from vuln_scanner)
    - Investigate and remediate per standard IR procedure.
 
-12. [HIGH] django==2.0.1: django: Information leakage in AuthenticationForm  (from vuln_scanner)
+9. [HIGH] django==2.0.1: django: Information leakage in AuthenticationForm  (from vuln_scanner)
    - Upgrade the flagged package to the patched version referenced in the CVE.
    - Re-run the vulnerability scan post-upgrade to confirm remediation.
    - Add dependency scanning as a CI gate (e.g. pip-audit, Trivy) to prevent regressions.
 
-13. [HIGH] django==2.0.1: python-django: Content spoofing via URL path in default 404 page  (from vuln_scanner)
+10. [HIGH] django==2.0.1: python-django: Content spoofing via URL path in default 404 page  (from vuln_scanner)
    - Upgrade the flagged package to the patched version referenced in the CVE.
    - Re-run the vulnerability scan post-upgrade to confirm remediation.
    - Add dependency scanning as a CI gate (e.g. pip-audit, Trivy) to prevent regressions.
 
-14. [HIGH] django==2.0.1: python-django: memory exhaustion in django.utils.numberformat.format()  (from vuln_scanner)
+11. [HIGH] django==2.0.1: python-django: memory exhaustion in django.utils.numberformat.format()  (from vuln_scanner)
    - Upgrade the flagged package to the patched version referenced in the CVE.
    - Re-run the vulnerability scan post-upgrade to confirm remediation.
    - Add dependency scanning as a CI gate (e.g. pip-audit, Trivy) to prevent regressions.
 
-15. [HIGH] django==2.0.1: An issue was discovered in the HTTP FileResponse class in Django 3.2 b ...  (from vuln_scanner)
+12. [HIGH] django==2.0.1: An issue was discovered in the HTTP FileResponse class in Django 3.2 b ...  (from vuln_scanner)
    - Upgrade the flagged package to the patched version referenced in the CVE.
    - Re-run the vulnerability scan post-upgrade to confirm remediation.
    - Add dependency scanning as a CI gate (e.g. pip-audit, Trivy) to prevent regressions.
 
-16. [HIGH] django==2.0.1: django: Django SQL injection in FilteredRelation column aliases  (from vuln_scanner)
+13. [HIGH] django==2.0.1: django: Django SQL injection in FilteredRelation column aliases  (from vuln_scanner)
    - Upgrade the flagged package to the patched version referenced in the CVE.
    - Re-run the vulnerability scan post-upgrade to confirm remediation.
    - Add dependency scanning as a CI gate (e.g. pip-audit, Trivy) to prevent regressions.
 
-17. [HIGH] django==2.0.1: Django: Denial-of-service vulnerability in Django on Windows  (from vuln_scanner)
+14. [HIGH] django==2.0.1: Django: Denial-of-service vulnerability in Django on Windows  (from vuln_scanner)
    - Upgrade the flagged package to the patched version referenced in the CVE.
    - Re-run the vulnerability scan post-upgrade to confirm remediation.
    - Add dependency scanning as a CI gate (e.g. pip-audit, Trivy) to prevent regressions.
 
-18. [HIGH] flask==0.12.2: python-flask: Denial of Service via crafted JSON file  (from vuln_scanner)
+15. [HIGH] flask==0.12.2: python-flask: Denial of Service via crafted JSON file  (from vuln_scanner)
    - Upgrade the flagged package to the patched version referenced in the CVE.
    - Re-run the vulnerability scan post-upgrade to confirm remediation.
    - Add dependency scanning as a CI gate (e.g. pip-audit, Trivy) to prevent regressions.
 
-19. [HIGH] flask==0.12.2: python-flask: unexpected memory usage can lead to denial of service via crafted encoded JSON data  (from vuln_scanner)
+16. [HIGH] flask==0.12.2: python-flask: unexpected memory usage can lead to denial of service via crafted encoded JSON data  (from vuln_scanner)
    - Upgrade the flagged package to the patched version referenced in the CVE.
    - Re-run the vulnerability scan post-upgrade to confirm remediation.
    - Add dependency scanning as a CI gate (e.g. pip-audit, Trivy) to prevent regressions.
 
-20. [HIGH] flask==0.12.2: flask: Possible disclosure of permanent session cookie due to missing Vary: Cookie header  (from vuln_scanner)
+17. [HIGH] flask==0.12.2: flask: Possible disclosure of permanent session cookie due to missing Vary: Cookie header  (from vuln_scanner)
    - Upgrade the flagged package to the patched version referenced in the CVE.
    - Re-run the vulnerability scan post-upgrade to confirm remediation.
    - Add dependency scanning as a CI gate (e.g. pip-audit, Trivy) to prevent regressions.
 
-21. [HIGH] jinja2==2.10: python-jinja2: str.format_map allows sandbox escape  (from vuln_scanner)
+18. [HIGH] jinja2==2.10: python-jinja2: str.format_map allows sandbox escape  (from vuln_scanner)
    - Upgrade the flagged package to the patched version referenced in the CVE.
    - Re-run the vulnerability scan post-upgrade to confirm remediation.
    - Add dependency scanning as a CI gate (e.g. pip-audit, Trivy) to prevent regressions.
 
-22. [HIGH] requests==2.6.0: python-requests: Redirect from HTTPS to HTTP does not remove Authorization header  (from vuln_scanner)
+19. [HIGH] requests==2.6.0: python-requests: Redirect from HTTPS to HTTP does not remove Authorization header  (from vuln_scanner)
    - Upgrade the flagged package to the patched version referenced in the CVE.
    - Re-run the vulnerability scan post-upgrade to confirm remediation.
    - Add dependency scanning as a CI gate (e.g. pip-audit, Trivy) to prevent regressions.
 
-23. [MEDIUM] Reconnaissance probe against '/../../../../etc/passwd' (status 400)  (from log_monitor)
-   - Verify the probed paths (.env, wp-admin, etc.) don't exist or are not reachable.
-   - Add WAF rules to block path-traversal and common CMS-probe signatures.
-   - Confirm no secrets are committed or reachable at web-exposed paths.
-
-24. [MEDIUM] Reconnaissance probe against '/wp-admin/setup-config.php' (status 404)  (from log_monitor)
-   - Verify the probed paths (.env, wp-admin, etc.) don't exist or are not reachable.
-   - Add WAF rules to block path-traversal and common CMS-probe signatures.
-   - Confirm no secrets are committed or reachable at web-exposed paths.
-
-25. [MEDIUM] Reconnaissance probe against '/.env' (status 404)  (from log_monitor)
-   - Verify the probed paths (.env, wp-admin, etc.) don't exist or are not reachable.
-   - Add WAF rules to block path-traversal and common CMS-probe signatures.
-   - Confirm no secrets are committed or reachable at web-exposed paths.
-
-26. [MEDIUM] User 'admin' set world-writable permissions (chmod 777) on a web-accessible path  (from log_monitor)
+20. [MEDIUM] User 'deploy' set world-writable permissions (chmod 777) on a web-accessible path  (from log_monitor)
    - Revert world-writable permissions; set least-privilege ownership on the affected path.
    - Audit for any files dropped/modified while permissions were open.
    - Add a config-drift monitor/alert for permission changes on sensitive paths.
 
-27. [MEDIUM] django==2.0.1: django: Open redirect possibility in CommonMiddleware  (from vuln_scanner)
+21. [MEDIUM] django==2.0.1: django: Open redirect possibility in CommonMiddleware  (from vuln_scanner)
    - Upgrade the flagged package to the patched version referenced in the CVE.
    - Re-run the vulnerability scan post-upgrade to confirm remediation.
    - Add dependency scanning as a CI gate (e.g. pip-audit, Trivy) to prevent regressions.
 
-28. [MEDIUM] django==2.0.1: django: Catastrophic backtracking in regular expressions via 'urlize' and 'urlizetrunc'  (from vuln_scanner)
+22. [MEDIUM] django==2.0.1: django: Catastrophic backtracking in regular expressions via 'urlize' and 'urlizetrunc'  (from vuln_scanner)
    - Upgrade the flagged package to the patched version referenced in the CVE.
    - Re-run the vulnerability scan post-upgrade to confirm remediation.
    - Add dependency scanning as a CI gate (e.g. pip-audit, Trivy) to prevent regressions.
 
-29. [MEDIUM] django==2.0.1: jquery: Prototype pollution in object's prototype leading to denial of service, remote code execution, or property injection  (from vuln_scanner)
+23. [MEDIUM] django==2.0.1: jquery: Prototype pollution in object's prototype leading to denial of service, remote code execution, or property injection  (from vuln_scanner)
    - Upgrade the flagged package to the patched version referenced in the CVE.
    - Re-run the vulnerability scan post-upgrade to confirm remediation.
    - Add dependency scanning as a CI gate (e.g. pip-audit, Trivy) to prevent regressions.
 
-30. [MEDIUM] django==2.0.1: django: Potential directory traversal via ``admindocs``  (from vuln_scanner)
+24. [MEDIUM] django==2.0.1: django: Potential directory traversal via ``admindocs``  (from vuln_scanner)
    - Upgrade the flagged package to the patched version referenced in the CVE.
    - Re-run the vulnerability scan post-upgrade to confirm remediation.
    - Add dependency scanning as a CI gate (e.g. pip-audit, Trivy) to prevent regressions.
 
-31. [MEDIUM] django==2.0.1: python-django: Potential user email enumeration via response status on password reset  (from vuln_scanner)
+25. [MEDIUM] django==2.0.1: python-django: Potential user email enumeration via response status on password reset  (from vuln_scanner)
    - Upgrade the flagged package to the patched version referenced in the CVE.
    - Re-run the vulnerability scan post-upgrade to confirm remediation.
    - Add dependency scanning as a CI gate (e.g. pip-audit, Trivy) to prevent regressions.
 
-32. [MEDIUM] django==2.0.1: django: Django Path Injection Vulnerability  (from vuln_scanner)
+26. [MEDIUM] django==2.0.1: django: Django Path Injection Vulnerability  (from vuln_scanner)
    - Upgrade the flagged package to the patched version referenced in the CVE.
    - Re-run the vulnerability scan post-upgrade to confirm remediation.
    - Add dependency scanning as a CI gate (e.g. pip-audit, Trivy) to prevent regressions.
 
-33. [MEDIUM] jinja2==2.10: python-jinja2: ReDoS vulnerability in the urlize filter  (from vuln_scanner)
+27. [MEDIUM] jinja2==2.10: python-jinja2: ReDoS vulnerability in the urlize filter  (from vuln_scanner)
    - Upgrade the flagged package to the patched version referenced in the CVE.
    - Re-run the vulnerability scan post-upgrade to confirm remediation.
    - Add dependency scanning as a CI gate (e.g. pip-audit, Trivy) to prevent regressions.
 
-34. [MEDIUM] jinja2==2.10: jinja2: HTML attribute injection when passing user input as keys to xmlattr filter  (from vuln_scanner)
+28. [MEDIUM] jinja2==2.10: jinja2: HTML attribute injection when passing user input as keys to xmlattr filter  (from vuln_scanner)
    - Upgrade the flagged package to the patched version referenced in the CVE.
    - Re-run the vulnerability scan post-upgrade to confirm remediation.
    - Add dependency scanning as a CI gate (e.g. pip-audit, Trivy) to prevent regressions.
 
-35. [MEDIUM] jinja2==2.10: jinja2: accepts keys containing non-attribute characters  (from vuln_scanner)
+29. [MEDIUM] jinja2==2.10: jinja2: accepts keys containing non-attribute characters  (from vuln_scanner)
    - Upgrade the flagged package to the patched version referenced in the CVE.
    - Re-run the vulnerability scan post-upgrade to confirm remediation.
    - Add dependency scanning as a CI gate (e.g. pip-audit, Trivy) to prevent regressions.
 
-36. [MEDIUM] jinja2==2.10: jinja2: Jinja has a sandbox breakout through indirect reference to format method  (from vuln_scanner)
+30. [MEDIUM] jinja2==2.10: jinja2: Jinja has a sandbox breakout through indirect reference to format method  (from vuln_scanner)
    - Upgrade the flagged package to the patched version referenced in the CVE.
    - Re-run the vulnerability scan post-upgrade to confirm remediation.
    - Add dependency scanning as a CI gate (e.g. pip-audit, Trivy) to prevent regressions.
 
-37. [MEDIUM] jinja2==2.10: jinja2: Jinja sandbox breakout through attr filter selecting format method  (from vuln_scanner)
+31. [MEDIUM] jinja2==2.10: jinja2: Jinja sandbox breakout through attr filter selecting format method  (from vuln_scanner)
    - Upgrade the flagged package to the patched version referenced in the CVE.
    - Re-run the vulnerability scan post-upgrade to confirm remediation.
    - Add dependency scanning as a CI gate (e.g. pip-audit, Trivy) to prevent regressions.
 
-38. [MEDIUM] requests==2.6.0: python-requests: Unintended leak of Proxy-Authorization header  (from vuln_scanner)
+32. [MEDIUM] requests==2.6.0: python-requests: Unintended leak of Proxy-Authorization header  (from vuln_scanner)
    - Upgrade the flagged package to the patched version referenced in the CVE.
    - Re-run the vulnerability scan post-upgrade to confirm remediation.
    - Add dependency scanning as a CI gate (e.g. pip-audit, Trivy) to prevent regressions.
 
-39. [MEDIUM] requests==2.6.0: requests: subsequent requests to the same host ignore cert verification  (from vuln_scanner)
+33. [MEDIUM] requests==2.6.0: requests: subsequent requests to the same host ignore cert verification  (from vuln_scanner)
    - Upgrade the flagged package to the patched version referenced in the CVE.
    - Re-run the vulnerability scan post-upgrade to confirm remediation.
    - Add dependency scanning as a CI gate (e.g. pip-audit, Trivy) to prevent regressions.
 
-40. [MEDIUM] requests==2.6.0: requests: Requests vulnerable to .netrc credentials leak via malicious URLs  (from vuln_scanner)
+34. [MEDIUM] requests==2.6.0: requests: Requests vulnerable to .netrc credentials leak via malicious URLs  (from vuln_scanner)
    - Upgrade the flagged package to the patched version referenced in the CVE.
    - Re-run the vulnerability scan post-upgrade to confirm remediation.
    - Add dependency scanning as a CI gate (e.g. pip-audit, Trivy) to prevent regressions.
 
-41. [MEDIUM] requests==2.6.0: requests: Requests: Security bypass due to predictable temporary file creation  (from vuln_scanner)
+35. [MEDIUM] requests==2.6.0: requests: Requests: Security bypass due to predictable temporary file creation  (from vuln_scanner)
    - Upgrade the flagged package to the patched version referenced in the CVE.
    - Re-run the vulnerability scan post-upgrade to confirm remediation.
    - Add dependency scanning as a CI gate (e.g. pip-audit, Trivy) to prevent regressions.
 
-42. [LOW] No HEALTHCHECK defined: Add HEALTHCHECK instruction in your Dockerfile  (from vuln_scanner)
+36. [LOW] No HEALTHCHECK defined: Add HEALTHCHECK instruction in your Dockerfile  (from vuln_scanner)
    - Investigate and remediate per standard IR procedure.
 
-43. [LOW] django==2.0.1: django: Catastrophic backtracking in regular expressions via 'truncatechars_html' and 'truncatewords_html'  (from vuln_scanner)
+37. [LOW] django==2.0.1: django: Catastrophic backtracking in regular expressions via 'truncatechars_html' and 'truncatewords_html'  (from vuln_scanner)
    - Upgrade the flagged package to the patched version referenced in the CVE.
    - Re-run the vulnerability scan post-upgrade to confirm remediation.
    - Add dependency scanning as a CI gate (e.g. pip-audit, Trivy) to prevent regressions.
 
-44. [LOW] flask==0.12.2: flask: Flask: Information disclosure via improper caching of session data  (from vuln_scanner)
+38. [LOW] flask==0.12.2: flask: Flask: Information disclosure via improper caching of session data  (from vuln_scanner)
    - Upgrade the flagged package to the patched version referenced in the CVE.
    - Re-run the vulnerability scan post-upgrade to confirm remediation.
    - Add dependency scanning as a CI gate (e.g. pip-audit, Trivy) to prevent regressions.
 
 ## 5. Policy Checker Agent - Compliance Gaps
 Policy Checker Agent - compliance gaps:
-- Finding: Password-based (not key-based) login for privileged user 'admin' from 185.220.101.7
-  -> Maps to: NIST SP 800-53 - IA-2: Identification and Authentication (similarity 0.52)
-- Finding: Reconnaissance probe against '/../../../../etc/passwd' (status 400)
-  -> Maps to: NIST SP 800-53 - IR-9.4: Exposure to Unauthorized Personnel (similarity 0.41)
-- Finding: Reconnaissance probe against '/wp-admin/setup-config.php' (status 404)
-  -> Maps to: NIST SP 800-53 - SI-2: Flaw Remediation (similarity 0.33)
-- Finding: Reconnaissance probe against '/.env' (status 404)
-  -> Maps to: ISO/IEC 27001:2022 - A.8.16: Monitoring Activities (similarity 0.39)
-- Finding: User 'admin' set world-writable permissions (chmod 777) on a web-accessible path
-  -> Maps to: NIST SP 800-53 - AC-6.10: Prohibit Non-privileged Users from Executing Privileged Functions (similarity 0.34)
-- Finding: 9 failed SSH logins from 185.220.101.7 targeting privileged accounts ['admin', 'root']
-  -> Maps to: NIST SP 800-53 - IA-2: Identification and Authentication (similarity 0.50)
-- Finding: Port scan from 45.155.204.13 against ports ['22', '3389', '6379', '8080', '27017']
-  -> Maps to: NIST SP 800-53 - AC-17: Remote Access (similarity 0.43)
+- Finding: User 'deploy' set world-writable permissions (chmod 777) on a web-accessible path
+  -> Maps to: ISO/IEC 27001:2022 - A.8.9: Configuration Management (similarity 0.39)
 - Finding: Image user should not be 'root': Specify at least 1 USER command in Dockerfile with non-root user as argument
   -> Maps to: ISO/IEC 27001:2022 - A.8.9: Configuration Management (similarity 0.41)
 - Finding: No HEALTHCHECK defined: Add HEALTHCHECK instruction in your Dockerfile

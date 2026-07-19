@@ -1,0 +1,26 @@
+# Output of `helm template mychart > rendered.yaml` with the chart's
+# values.yaml set to `privileged: true` - fully resolved plain Kubernetes
+# YAML, uploaded instead of the raw chart (see helm_rendered_hardened.yaml).
+---
+# Source: mychart/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mychart
+  labels:
+    app: mychart
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mychart
+  template:
+    metadata:
+      labels:
+        app: mychart
+    spec:
+      containers:
+        - name: app
+          image: nginx:1.21
+          securityContext:
+            privileged: true

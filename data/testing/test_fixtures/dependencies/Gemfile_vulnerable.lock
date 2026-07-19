@@ -1,0 +1,18 @@
+# nokogiri (1.8.0) -> CVE-2018-14404 (libxml2 NULL deref)
+# rails (4.2.0) -> CVE-2019-5418 (File::Read via Action View)
+GEM
+  remote: https://rubygems.org/
+  specs:
+    nokogiri (1.8.0)
+      mini_portile2 (~> 2.3.0)
+    rails (4.2.0)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  nokogiri
+  rails
+
+BUNDLED WITH
+   2.4.10

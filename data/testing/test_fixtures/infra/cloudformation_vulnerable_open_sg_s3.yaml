@@ -1,0 +1,19 @@
+# Vulnerable: open 0.0.0.0/0 SSH ingress + S3 bucket with no encryption/
+# public-access-block configured. Deliberately kept to plain, simple
+# resource properties (no Fn::ForEach or advanced intrinsic functions),
+# since Trivy is documented to silently skip templates using those.
+AWSTemplateFormatVersion: '2010-09-09'
+Resources:
+  BadSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: open sg
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+  BadBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: my-insecure-cf-bucket
