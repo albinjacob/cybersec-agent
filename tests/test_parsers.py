@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from agents import notify
 from agents.council import _parse_agreement
 from agents.log_monitor import parse_log
+from agents.policy_checker import PolicyIndex, load_policy_chunks
 from agents.vuln_scanner import SEVERITY_NORMALIZE, parse_requirements
 from evals.run_evals import SCORE_RE, _matches_expected
 
@@ -162,3 +163,37 @@ def test_send_slack_rejects_non_slack_urls():
         notify._send_slack("https://internal.example/metadata", "text")
     with pytest.raises(ValueError):
         notify._send_slack("http://hooks.slack.com/services/x", "text")  # http, not https
+
+
+# ------------------------------------------------------------ policy checker
+
+def test_policy_index_handles_empty_chunk_list():
+    # A whitespace-only policy document produces no chunks. Regression test for
+    # the pipeline crashing with ValueError("empty vocabulary") out of
+    # TfidfVectorizer instead of reporting zero gaps.
+    index = PolicyIndex([])
+    assert index.retrieve("failed SSH logins from 203.0.113.7") == []
+
+
+def test_policy_index_handles_stopwords_only_document():
+    # Chunks that tokenize to nothing once English stop words are removed hit
+    # the same ValueError from a different direction.
+    index = PolicyIndex(["the and of", "is it to"])
+    assert index.retrieve("failed SSH logins from 203.0.113.7") == []
+
+
+def test_policy_index_still_retrieves_from_a_real_document():
+    # The guard above must not turn a working index into a silently empty one.
+    index = PolicyIndex([
+        "## AC-7 Unsuccessful Logon Attempts\nEnforce a limit of consecutive "
+        "invalid logon attempts and lock the account.",
+        "## SC-7 Boundary Protection\nMonitor and control communications at "
+        "external managed interfaces.",
+    ])
+    results = index.retrieve("consecutive invalid logon attempts lock account")
+    assert results and "AC-7" in results[0][0]
+
+
+def test_load_policy_chunks_on_whitespace_only_file(tmp_path):
+    path = _write(tmp_path, "empty_policy.md", "\r\n\r\n   \r\n")
+    assert load_policy_chunks(path) == []

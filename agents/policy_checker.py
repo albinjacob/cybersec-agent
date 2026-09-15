@@ -77,10 +77,29 @@ class PolicyIndex:
 
     def __init__(self, chunks):
         self.chunks = chunks
-        self.vectorizer = TfidfVectorizer(stop_words="english")
-        self.matrix = self.vectorizer.fit_transform(chunks)
+        self.vectorizer = None
+        self.matrix = None
+        if not chunks:
+            # A blank or whitespace-only policy document yields no chunks. That
+            # is valid input - the user uploaded a policy with nothing in it -
+            # not an error, so the pipeline should report zero policy gaps
+            # rather than failing the node.
+            return
+        vectorizer = TfidfVectorizer(stop_words="english")
+        try:
+            self.matrix = vectorizer.fit_transform(chunks)
+        except ValueError:
+            # fit_transform raises ValueError("empty vocabulary") when every
+            # chunk is stop words or punctuation - nothing indexable survives
+            # tokenization. Same situation as no chunks at all: there is
+            # nothing to retrieve, so leave the index empty. Caught narrowly
+            # around this one call so a real bug elsewhere still crashes loudly.
+            return
+        self.vectorizer = vectorizer
 
     def retrieve(self, query: str, top_k: int = 1, min_score: float = TFIDF_MIN_SCORE):
+        if self.vectorizer is None:
+            return []
         q_vec = self.vectorizer.transform([query])
         sims = cosine_similarity(q_vec, self.matrix)[0]
         ranked = sorted(range(len(sims)), key=lambda i: -sims[i])
