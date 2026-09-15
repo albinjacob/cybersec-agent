@@ -1,0 +1,134 @@
+name: CI
+
+# Two gates, both blocking:
+#   tests         - the deterministic unit layer (regex, parsing, normalization)
+#   fixture-suite - the repo's own end-to-end runner over data/testing/test_fixtures
+#
+# Both run with no API key. scripts/run_fixture_suite.py in its default
+# "development" mode actively strips ANTHROPIC_API_KEY / OPENAI_API_KEY /
+# OPENROUTER_API_KEY from the environment, so reasoning takes the mock path and
+# pass/fail is judged purely on structured findings. That is what makes it
+# deterministic enough to gate on.
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Unit tests (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        # Installing the full requirements.txt rather than a hand-picked subset,
+        # so a broken or unsatisfiable dependency set fails here rather than on
+        # someone's first clone.
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install pytest pytest-cov
+
+      - name: Run unit tests
+        run: |
+          python -m pytest tests/ -q \
+            --cov=agents --cov=evals \
+            --cov-report=term-missing \
+            --cov-report=json:coverage.json
+        # COVERAGE FLOOR: deliberately not set yet. The first green run will
+        # print the real number below; set --cov-fail-under to just under it so
+        # coverage can only ratchet upwards. A floor guessed before the number
+        # is known either fails honest builds or gates nothing at all.
+
+      - name: Coverage summary
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, os, pathlib
+          p = pathlib.Path("coverage.json")
+          if not p.exists():
+              print("No coverage.json produced (tests likely failed before coverage was written).")
+              raise SystemExit(0)
+          data = json.loads(p.read_text())
+          total = data["totals"]["percent_covered"]
+          lines = [
+              "### Coverage (agents/ + evals/)",
+              "",
+              f"**{total:.1f}%** of statements covered.",
+              "",
+              "| Module | Coverage |",
+              "|---|---|",
+          ]
+          for name, f in sorted(data["files"].items()):
+              lines.append(f"| `{name}` | {f['summary']['percent_covered']:.1f}% |")
+          out = os.environ.get("GITHUB_STEP_SUMMARY")
+          text = "\n".join(lines)
+          print(text)
+          if out:
+              with open(out, "a", encoding="utf-8") as fh:
+                  fh.write(text + "\n")
+          PY
+
+  fixture-suite:
+    name: End-to-end fixture suite
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Run fixture suite
+        # Exits 1 if any fixture fails its must_have / must_not expectation.
+        # Trivy is not installed here, so the scanner takes its labeled
+        # static-fallback path; the suite accepts either source. Threat intel
+        # will try the live NVD API and fall back to the bundled dataset, so a
+        # network blip degrades the path rather than failing the run.
+        run: python scripts/run_fixture_suite.py
+
+      - name: Publish fixture report
+        if: always()
+        run: |
+          if [ -f output/fixture_test_report.md ]; then
+            cat output/fixture_test_report.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No fixture report produced." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload fixture report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fixture-test-report
+          path: output/fixture_test_report.md
+          if-no-files-found: warn
