@@ -103,17 +103,24 @@ jobs:
           cache: pip
           cache-dependency-path: requirements.txt
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
+      - name: Install dependencies and Trivy
+        # Reuses the repo's own deploy build script rather than a parallel
+        # install, so CI exercises the same path Render does and a break in
+        # that script fails here instead of on a deploy.
+        #
+        # Trivy is REQUIRED for this job, not optional. The infra and
+        # dependency expectations in data/testing/test_fixtures/README.md were
+        # derived empirically from real `trivy config` / `trivy fs` runs, down
+        # to specific check IDs (DS-0002, DS-0026) and CVEs. On the static
+        # fallback path those fixtures cannot pass, so running this suite
+        # without Trivy measures nothing.
+        run: bash scripts/render_build.sh
 
       - name: Run fixture suite
-        # Exits 1 if any fixture fails its must_have / must_not expectation.
-        # Trivy is not installed here, so the scanner takes its labeled
-        # static-fallback path; the suite accepts either source. Threat intel
-        # will try the live NVD API and fall back to the bundled dataset, so a
-        # network blip degrades the path rather than failing the run.
+        # Exits 1 if any fixture misses its must_have / must_not expectation.
+        # Threat intel tries the live NVD API and falls back to the bundled
+        # dataset, so a network blip degrades that path rather than failing
+        # the run.
         run: python scripts/run_fixture_suite.py
 
       - name: Publish fixture report
