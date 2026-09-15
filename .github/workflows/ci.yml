@@ -51,15 +51,17 @@ jobs:
           python -m pip install pytest pytest-cov
 
       - name: Run unit tests
+        # The floor is set just under the measured number (26% at the time of
+        # writing), so coverage can only ratchet upwards and tests cannot be
+        # quietly deleted. Raise it whenever a run comes in comfortably above
+        # it. It is deliberately NOT set to an aspirational number: a floor
+        # nobody can meet gets removed rather than met.
         run: |
           python -m pytest tests/ -q \
             --cov=agents --cov=evals \
             --cov-report=term-missing \
-            --cov-report=json:coverage.json
-        # COVERAGE FLOOR: deliberately not set yet. The first green run will
-        # print the real number below; set --cov-fail-under to just under it so
-        # coverage can only ratchet upwards. A floor guessed before the number
-        # is known either fails honest builds or gates nothing at all.
+            --cov-report=json:coverage.json \
+            --cov-fail-under=25
 
       - name: Coverage summary
         if: always()
